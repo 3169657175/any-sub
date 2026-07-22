@@ -1,0 +1,30 @@
+{
+  "verifiedAt": "2026-07-22T02:46:25.846Z",
+  "ok": true,
+  "archivePath": "C:\\Users\\niu\\.gemini\\antigravity\\scratch\\agy-hub\\assets\\app.asar",
+  "archiveSize": 35530466,
+  "archiveSha256": "529e3383d4760cbc980dd9a2bb24774d0523c0e7f98350b6e815f669ce02f96a",
+  "packageName": "antigravity",
+  "packageVersion": "2.3.1",
+  "requiredFiles": [
+    "package.json",
+    "dist/languageServer.js",
+    "dist/preload.js",
+    "dist/main.js",
+    "dist/ipcHandlers.js",
+    "dist/accountVault.js"
+  ],
+  "checkedSyntax": [
+    "dist/languageServer.js",
+    "dist/preload.js",
+    "dist/main.js",
+    "dist/ipcHandlers.js",
+    "dist/accountVault.js"
+  ],
+  "runtimeChecks": [
+    "model API uses port 31000",
+    "Cloud Code uses port 31001",
+    "official endpoint fallback is present",
+    "Token reporting uses IPC"
+  ]
+}

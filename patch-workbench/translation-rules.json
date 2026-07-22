@@ -1,0 +1,8 @@
+[
+  {
+    "description": "Example rule. Replace only exact UI text.",
+    "find": "",
+    "replace": "",
+    "enabled": false
+  }
+]

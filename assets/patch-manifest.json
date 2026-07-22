@@ -1,0 +1,13 @@
+{
+  "formatVersion": 1,
+  "clientVersion": "2.3.1",
+  "pluginVersion": "2.3.1",
+  "unpackedFiles": 286,
+  "requiredFiles": [
+    "dist/languageServer.js",
+    "dist/main.js",
+    "dist/preload.js",
+    "dist/ipcHandlers.js",
+    "dist/accountVault.js"
+  ]
+}

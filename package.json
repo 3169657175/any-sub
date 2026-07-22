@@ -1,0 +1,69 @@
+{
+  "name": "agy-hub",
+  "version": "1.0.0",
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "dist:sync": "electron-builder && node sync-d.js",
+    "patch:baseline": "node patch-workbench/make-baseline.js",
+    "patch:rebuild": "node patch-workbench/build-patch.js",
+    "patch:verify": "node patch-workbench/verify-patch.js"
+  },
+  "build": {
+    "appId": "com.agy.hub",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "3169657175",
+        "repo": "any-sub"
+      }
+    ],
+    "files": [
+      "**/*",
+      "!dist{,/**}",
+      "!dist-token-monitor{,/**}",
+      "!backup_before_*{,/**}",
+      "!**/*.backup_*",
+      "!assets/app.asar",
+      "!assets/app.asar.unpacked{,/**}",
+      "!assets/patch-manifest.json"
+    ],
+    "productName": "AGY Hub 桌面管家",
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "assets/app.asar",
+        "to": "patch/app.asar"
+      },
+      {
+        "from": "assets/app.asar.unpacked",
+        "to": "patch/app.asar.unpacked"
+      },
+      {
+        "from": "assets/patch-manifest.json",
+        "to": "patch/patch-manifest.json"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@electron/asar": "^3.4.1",
+    "electron-updater": "^6.8.9",
+    "https-proxy-agent": "^5.0.1"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}

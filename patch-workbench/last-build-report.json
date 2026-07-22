@@ -1,0 +1,11 @@
+{
+  "builtAt": "2026-07-22T02:46:14.047Z",
+  "baselineAsar": "C:\\Users\\niu\\.gemini\\antigravity\\scratch\\agy-hub\\assets\\app.asar.baseline_stable",
+  "outputAsar": "C:\\Users\\niu\\.gemini\\antigravity\\scratch\\agy-hub\\assets\\app.asar",
+  "originalPreloadHash": "59f10a80f3caca5564dbdbb68a5d8090d5514b125ed83f32ed2548b8786f40d0",
+  "rebuiltPreloadHash": "59f10a80f3caca5564dbdbb68a5d8090d5514b125ed83f32ed2548b8786f40d0",
+  "headerInjected": false,
+  "footerInjected": false,
+  "appliedRules": [],
+  "outputSize": 35530466
+}
