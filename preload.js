@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('agyHubAPI', {
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),
   focusMainWindow: () => ipcRenderer.invoke('focus-main-window'),
   detectPaths: () => ipcRenderer.invoke('detect-paths'),

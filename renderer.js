@@ -3888,6 +3888,10 @@ async function initTokenMonitor() {
       hitRate = (stats.cachedTokens / stats.promptTokens) * 100;
     }
     statHitRate.textContent = hitRate.toFixed(1) + '%';
+    const fill = document.getElementById('cache-rate-fill');
+    if (fill) {
+      fill.style.width = Math.min(100, Math.max(0, hitRate)).toFixed(1) + '%';
+    }
   }
 
   // --- 新增状态控制 ---
@@ -4209,6 +4213,53 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('更新提醒: ' + data.text);
         btn.textContent = '🚀 检查更新';
         btn.disabled = false;
+      }
+    });
+  }
+  // ----------------------------------------
+  // 窗口全屏/还原按钮 (btn-maximize)
+  // ----------------------------------------
+  const btnMaximize = document.getElementById('btn-maximize');
+  if (btnMaximize) {
+    btnMaximize.addEventListener('click', () => {
+      if (window.agyHubAPI && window.agyHubAPI.maximizeWindow) {
+        window.agyHubAPI.maximizeWindow();
+      }
+    });
+  }
+
+  // ----------------------------------------
+  // 亮色/暗色主题切换 (btn-toggle-light-dark)
+  // ----------------------------------------
+  const btnToggleLightDark = document.getElementById('btn-toggle-light-dark');
+  const sunIcon = document.getElementById('theme-icon-sun');
+  const moonIcon = document.getElementById('theme-icon-moon');
+
+  // 初始化上次选择的主题
+  const savedThemeMode = localStorage.getItem('agy_hub_color_theme');
+  if (savedThemeMode === 'light') {
+    document.body.classList.add('light-theme');
+    if (sunIcon && moonIcon) {
+      sunIcon.style.display = 'inline';
+      moonIcon.style.display = 'none';
+    }
+  }
+
+  if (btnToggleLightDark) {
+    btnToggleLightDark.addEventListener('click', () => {
+      const isLight = document.body.classList.toggle('light-theme');
+      if (isLight) {
+        localStorage.setItem('agy_hub_color_theme', 'light');
+        if (sunIcon && moonIcon) {
+          sunIcon.style.display = 'inline';
+          moonIcon.style.display = 'none';
+        }
+      } else {
+        localStorage.setItem('agy_hub_color_theme', 'dark');
+        if (sunIcon && moonIcon) {
+          sunIcon.style.display = 'none';
+          moonIcon.style.display = 'inline';
+        }
       }
     });
   }
