@@ -2123,6 +2123,14 @@ input:checked + .slider:before {
 }
 
 /* 高级感高斯模糊登录/注册模态弹窗 */
+.modal-overlay,
+.modal-overlay *,
+#auth-modal,
+#auth-modal * {
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -2144,8 +2152,6 @@ input:checked + .slider:before {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   animation: none;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
 }
 
 #auth-modal .modal-content {

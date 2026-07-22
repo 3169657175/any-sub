@@ -2068,10 +2068,21 @@ function initFeedbackBoard() {
   const focusActiveAuthInput = () => {
     if (!authModal || authModal.style.display === 'none') return;
     const activeForm = authModal.querySelector('.auth-form-box.active');
-    const targetInput = activeForm?.querySelector('input:not([disabled])');
-    if (targetInput) {
-      targetInput.focus({ preventScroll: true });
+    if (!activeForm) return;
+    const inputs = activeForm.querySelectorAll('input:not([disabled])');
+    if (!inputs || inputs.length === 0) return;
+
+    let targetInput = inputs[0];
+    if (inputs.length > 1 && inputs[0].value.trim() !== '') {
+      targetInput = inputs[1];
     }
+
+    try {
+      targetInput.focus({ preventScroll: true });
+      if (targetInput.value) {
+        targetInput.select();
+      }
+    } catch (_) {}
   };
 
   const showAuthModal = async () => {
@@ -2083,7 +2094,9 @@ function initFeedbackBoard() {
     try {
       await window.agyHubAPI.focusMainWindow();
     } catch (_) {}
-    requestAnimationFrame(() => requestAnimationFrame(focusActiveAuthInput));
+    setTimeout(() => {
+      focusActiveAuthInput();
+    }, 60);
   };
 
   const hideAuthModal = () => {
@@ -2326,13 +2339,7 @@ function initFeedbackBoard() {
       currentUser = null;
       updateAuthUI();
       loadFeedbacks();
-      try {
-        await window.agyHubAPI.focusMainWindow();
-      } catch (_) {}
-      requestAnimationFrame(() => {
-        const loginButton = document.getElementById('btn-titlebar-login');
-        if (loginButton) loginButton.focus({ preventScroll: true });
-      });
+      showAuthModal();
     });
   }
 
