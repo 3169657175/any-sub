@@ -2125,32 +2125,74 @@ function initFeedbackBoard() {
   }
 
 
+  // --- 内联 Auth 提示与焦点修复函数 ---
+  const showAuthBanner = (msg, type = 'error') => {
+    const banner = document.getElementById('auth-msg-banner');
+    if (!banner) return;
+    banner.textContent = msg;
+    banner.style.display = 'block';
+    if (type === 'success') {
+      banner.style.background = 'rgba(16, 185, 129, 0.15)';
+      banner.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+      banner.style.color = '#34d399';
+    } else {
+      banner.style.background = 'rgba(244, 63, 94, 0.15)';
+      banner.style.border = '1px solid rgba(244, 63, 94, 0.4)';
+      banner.style.color = '#fb7185';
+    }
+  };
+
+  const clearAuthBanner = () => {
+    const banner = document.getElementById('auth-msg-banner');
+    if (banner) banner.style.display = 'none';
+  };
+
   // --- B. 登录与注册 Tab 切换 ---
   const btnTabLogin = document.getElementById('btn-tab-login');
   const btnTabRegister = document.getElementById('btn-tab-register');
   const formLoginBox = document.getElementById('form-login-box');
   const formRegisterBox = document.getElementById('form-register-box');
+  const inputLoginUser = document.getElementById('input-login-username');
+  const inputLoginPass = document.getElementById('input-login-password');
+  const inputRegUser = document.getElementById('input-reg-username');
+  const inputRegPass = document.getElementById('input-reg-password');
 
   if (btnTabLogin && btnTabRegister) {
-    btnTabLogin.addEventListener('click', () => {
+    btnTabLogin.addEventListener('click', async () => {
       btnTabLogin.classList.add('active');
       btnTabRegister.classList.remove('active');
       formLoginBox.classList.add('active');
       formRegisterBox.classList.remove('active');
+      clearAuthBanner();
+      try {
+        await window.agyHubAPI.focusMainWindow();
+      } catch (_) {}
+      setTimeout(() => {
+        if (inputLoginUser && inputLoginUser.value.trim()) {
+          inputLoginPass && inputLoginPass.focus({ preventScroll: true });
+        } else if (inputLoginUser) {
+          inputLoginUser.focus({ preventScroll: true });
+        }
+      }, 50);
     });
 
-    btnTabRegister.addEventListener('click', () => {
+    btnTabRegister.addEventListener('click', async () => {
       btnTabRegister.classList.add('active');
       btnTabLogin.classList.remove('active');
       formRegisterBox.classList.add('active');
       formLoginBox.classList.remove('active');
+      clearAuthBanner();
+      try {
+        await window.agyHubAPI.focusMainWindow();
+      } catch (_) {}
+      setTimeout(() => {
+        if (inputRegUser) inputRegUser.focus({ preventScroll: true });
+      }, 50);
     });
   }
 
   // --- C. 提交登录 ---
   const btnSubmitLogin = document.getElementById('btn-submit-login');
-  const inputLoginUser = document.getElementById('input-login-username');
-  const inputLoginPass = document.getElementById('input-login-password');
 
   if (btnSubmitLogin) {
     btnSubmitLogin.addEventListener('click', async () => {
@@ -2158,12 +2200,15 @@ function initFeedbackBoard() {
       const password = inputLoginPass.value.trim();
 
       if (!username || !password) {
-        alert('请输入账号和密码！');
+        showAuthBanner('⚠️ 请填写完整账号与密码！', 'error');
+        if (!username) inputLoginUser.focus();
+        else inputLoginPass.focus();
         return;
       }
 
       btnSubmitLogin.disabled = true;
       btnSubmitLogin.textContent = '正在安全登录...';
+      clearAuthBanner();
 
       try {
         const res = await window.agyHubAPI.authLogin(username, password);
@@ -2178,11 +2223,20 @@ function initFeedbackBoard() {
           loadFeedbacks(); // 刷新以同步渲染“删除”按钮
           loadAdminUserData(); // 如果是管理员，获取用户列表信息
         } else {
-          alert(res.error || '登录失败，请检查账号密码');
+          showAuthBanner(`❌ 登录失败: ${res.error || '密码错误或账号不存在'}`, 'error');
           logToTerminal(`[Auth] 登录失败: ${res.error}`, 'error');
+          try {
+            await window.agyHubAPI.focusMainWindow();
+          } catch (_) {}
+          setTimeout(() => {
+            if (inputLoginPass) {
+              inputLoginPass.focus({ preventScroll: true });
+              inputLoginPass.select();
+            }
+          }, 50);
         }
       } catch (err) {
-        alert(`登录发生异常: ${err.message}`);
+        showAuthBanner(`⚠️ 登录异常: ${err.message}`, 'error');
         logToTerminal(`[Auth] 登录异常: ${err.message}`, 'error');
       } finally {
         btnSubmitLogin.disabled = false;
@@ -2193,8 +2247,6 @@ function initFeedbackBoard() {
 
   // --- D. 提交注册 ---
   const btnSubmitRegister = document.getElementById('btn-submit-register');
-  const inputRegUser = document.getElementById('input-reg-username');
-  const inputRegPass = document.getElementById('input-reg-password');
 
   if (btnSubmitRegister) {
     btnSubmitRegister.addEventListener('click', async () => {
@@ -2202,36 +2254,61 @@ function initFeedbackBoard() {
       const password = inputRegPass.value.trim();
 
       if (!username || !password) {
-        alert('请输入账号和密码！');
+        showAuthBanner('⚠️ 请填写完整的账号与设置密码！', 'error');
+        if (!username) inputRegUser.focus();
+        else inputRegPass.focus();
         return;
       }
       if (username.length < 3 || username.length > 20) {
-        alert('用户名长度必须在 3 到 20 字之间！');
+        showAuthBanner('⚠️ 用户名长度必须在 3 到 20 字之间！', 'error');
+        inputRegUser.focus();
         return;
       }
       if (password.length < 6) {
-        alert('密码长度不能少于 6 位！');
+        showAuthBanner('⚠️ 密码长度不能少于 6 位！', 'error');
+        inputRegPass.focus();
         return;
       }
 
       btnSubmitRegister.disabled = true;
       btnSubmitRegister.textContent = '正在提交注册...';
+      clearAuthBanner();
 
       try {
         const res = await window.agyHubAPI.authRegister(username, password);
         if (res.success) {
-          alert('🎉 账号注册成功！已为您切换回登录面板。');
           logToTerminal(`[Auth] 新账号 @${username} 注册成功。`, 'success');
           inputRegUser.value = '';
           inputRegPass.value = '';
+          
+          // 自动平滑切换到登录面板
           btnTabLogin.click();
           inputLoginUser.value = username;
+          inputLoginPass.value = '';
+          
+          showAuthBanner(`🎉 账号 @${username} 注册成功！请输入密码完成登录。`, 'success');
+          
+          try {
+            await window.agyHubAPI.focusMainWindow();
+          } catch (_) {}
+          
+          setTimeout(() => {
+            if (inputLoginPass) {
+              inputLoginPass.focus({ preventScroll: true });
+            }
+          }, 80);
         } else {
-          alert(res.error || '注册失败');
+          showAuthBanner(`❌ 注册失败: ${res.error || '用户名已被占用'}`, 'error');
           logToTerminal(`[Auth] 注册失败: ${res.error}`, 'error');
+          try {
+            await window.agyHubAPI.focusMainWindow();
+          } catch (_) {}
+          setTimeout(() => {
+            if (inputRegUser) inputRegUser.focus({ preventScroll: true });
+          }, 50);
         }
       } catch (err) {
-        alert(`注册发生异常: ${err.message}`);
+        showAuthBanner(`⚠️ 注册异常: ${err.message}`, 'error');
         logToTerminal(`[Auth] 注册异常: ${err.message}`, 'error');
       } finally {
         btnSubmitRegister.disabled = false;

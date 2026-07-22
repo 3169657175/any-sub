@@ -659,6 +659,9 @@
           <button class="auth-tab-btn" id="btn-tab-register">账号注册</button>
         </div>
         
+        <!-- 内联交互提示 Banner (替代原生 alert 解决 Electron 失焦问题) -->
+        <div id="auth-msg-banner" style="display: none; padding: 8px 12px; margin-bottom: 12px; border-radius: 6px; font-size: 12px; text-align: center; font-weight: 500; transition: all 0.2s ease;"></div>
+        
         <!-- 登录表单 -->
         <div id="form-login-box" class="auth-form-box active">
           <div class="form-group">
