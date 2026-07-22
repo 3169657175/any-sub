@@ -618,6 +618,11 @@ if (!gotTheLock) {
       console.error('[Token Monitor] Local transcript monitor failed:', error);
     });
 
+    // 启动 3 秒后静默后台自动检测更新
+    setTimeout(() => {
+      try { autoUpdater.checkForUpdates(); } catch (_) {}
+    }, 3000);
+
     // 创建系统托盘图标 (指向 assets/icon.ico)
     const iconPath = path.join(__dirname, 'assets', 'icon.ico');
     tray = new Tray(iconPath);

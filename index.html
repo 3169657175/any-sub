@@ -50,12 +50,7 @@
           </span>
           <span class="nav-text">一键汉化补丁</span>
         </button>
-        <button class="nav-item" data-target="tab-network">
-          <span class="nav-icon">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20" stroke-width="3"></line></svg>
-          </span>
-          <span class="nav-text">免 TUN 分流</span>
-        </button>
+
         <button class="nav-item" data-target="tab-local-accounts">
           <span class="nav-icon">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 11h-6"></path><path d="M19 8v6"></path></svg>
@@ -167,37 +162,7 @@
         </div>
       </section>
 
-      <!-- Tab 2: 免 TUN 分流 -->
-      <section class="tab-pane" id="tab-network">
-        <div class="pane-header">
-          <h2>免 TUN 局部加速分流</h2>
-          <p class="subtitle">仅接管大模型网络 API 通信，确保高频对话的极速连通，不影响全局系统网络。</p>
-        </div>
 
-        <div class="pane-body">
-          <div class="card">
-            <h3>
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" class="title-icon"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-              网络策略
-            </h3>
-
-            <div class="network-switch-row">
-              <div class="network-info-meta">
-                <span class="meta-title">一键启用免 TUN 局部加速</span>
-                <span class="meta-desc">自动检测本地 7890 端口并写入代理路由。未启用时，流量走系统直连。</span>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="switch-network-bypass" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-
-            <button class="btn btn-primary margin-top-24" id="btn-save-network" style="width: 100%;">
-              保存并应用加速配置
-            </button>
-          </div>
-        </div>
-      </section>
 
       <!-- Tab 3: 本地账号 -->
       <section class="tab-pane" id="tab-local-accounts">
