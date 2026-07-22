@@ -1522,7 +1522,6 @@ ipcMain.handle('list-local-accounts', async () => {
       : '';
     
     const validAccounts = [];
-    let dirty = false;
 
     for (const entry of Array.isArray(registry.accounts) ? registry.accounts : []) {
       if (!entry || typeof entry.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(entry.id)) {
