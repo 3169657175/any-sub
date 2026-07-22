@@ -583,6 +583,10 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
 
+  app.on('before-quit', () => {
+    app.isQuiting = true;
+  });
+
   // 拦截关闭事件：点击叉号时仅隐藏窗口，保留后台默默守护状态
   mainWindow.on('close', (event) => {
     if (!app.isQuiting) {
@@ -2302,5 +2306,12 @@ ipcMain.handle('start-download-update', async () => {
 });
 
 ipcMain.handle('quit-and-install-update', () => {
-  autoUpdater.quitAndInstall(false, true);
+  app.isQuiting = true;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.removeAllListeners('close');
+    mainWindow.destroy();
+  }
+  setTimeout(() => {
+    autoUpdater.quitAndInstall(false, true);
+  }, 100);
 });
