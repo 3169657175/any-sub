@@ -3072,21 +3072,63 @@ input:checked + .slider:before {
 }
 
 /* ==========================================
-   LIGHT THEME (高奢清爽亮色模式设计系统)
+   LIGHT THEME (高奢清爽亮色模式全量对比度修复)
    ========================================== */
 body.light-theme {
   --bg-base: #f8fafc;
   --bg-card: #ffffff;
-  --bg-input: #f1f5f9;
+  --bg-input: #ffffff;
   --border-subtle: #e2e8f0;
   --border-strong: #cbd5e1;
   --text-main: #0f172a;
-  --text-dim: #475569;
+  --text-dim: #334155;
   --text-muted: #64748b;
+  --accent-cyan: #0284c7;
+  --accent-green: #16a34a;
+  --accent-pink: #e11d48;
   background-color: #f8fafc !important;
   color: #0f172a !important;
 }
 
+/* 1. 全局低对比度青/绿/黄文字在白底下的深度高清重映射 */
+body.light-theme [style*="color: #00f2fe"],
+body.light-theme [style*="color:#00f2fe"],
+body.light-theme [style*="color: #00f3ff"],
+body.light-theme [style*="color:#00f3ff"],
+body.light-theme [style*="color: var(--accent-cyan)"],
+body.light-theme [style*="color:var(--accent-cyan)"],
+body.light-theme .highlight-cyan,
+body.light-theme .text-cyan {
+  color: #0284c7 !important;
+}
+
+body.light-theme [style*="color: #52c49c"],
+body.light-theme [style*="color:#52c49c"],
+body.light-theme [style*="color: #00ff88"] {
+  color: #16a34a !important;
+}
+
+body.light-theme [style*="color: #fbd160"],
+body.light-theme [style*="color:#fbd160"],
+body.light-theme [style*="color: #f59e0b"] {
+  color: #d97706 !important;
+}
+
+body.light-theme [style*="color: #f06c8b"],
+body.light-theme [style*="color:#f06c8b"],
+body.light-theme [style*="color: #ff4d4f"] {
+  color: #e11d48 !important;
+}
+
+body.light-theme [style*="color: var(--text-dim)"],
+body.light-theme [style*="color: var(--text-muted)"],
+body.light-theme [style*="color:#9aa0a6"],
+body.light-theme [style*="color: #9aa0a6"],
+body.light-theme [style*="color:#585e64"] {
+  color: #475569 !important;
+}
+
+/* 2. 标题栏与顶部广播 Banner 彻底重塑 */
 body.light-theme .window-titlebar {
   background: #ffffff !important;
   border-bottom: 1px solid #e2e8f0 !important;
@@ -3108,7 +3150,7 @@ body.light-theme .control-btn:hover {
 
 body.light-theme .titlebar-login-btn {
   border-color: #cbd5e1 !important;
-  color: #475569 !important;
+  color: #334155 !important;
   background: #f1f5f9 !important;
 }
 
@@ -3117,6 +3159,19 @@ body.light-theme .titlebar-login-btn:hover {
   color: #0f172a !important;
 }
 
+body.light-theme #announcement-bar,
+body.light-theme .announcement-bar-desktop {
+  background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%) !important;
+  border-bottom: 1px solid #bae6fd !important;
+  color: #0369a1 !important;
+}
+
+body.light-theme #announcement-bar *,
+body.light-theme .announcement-bar-desktop * {
+  color: #0369a1 !important;
+}
+
+/* 3. 侧边栏与导航指示 */
 body.light-theme .sidebar {
   background: #ffffff !important;
   border-right: 1px solid #e2e8f0 !important;
@@ -3132,11 +3187,11 @@ body.light-theme .nav-item:hover {
 }
 
 body.light-theme .nav-item.active {
-  background: linear-gradient(135deg, rgba(0, 180, 219, 0.12), rgba(0, 242, 254, 0.16)) !important;
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.1), rgba(0, 180, 219, 0.15)) !important;
   color: #0284c7 !important;
   border: 1px solid rgba(2, 132, 199, 0.3) !important;
   font-weight: 600 !important;
-  box-shadow: 0 2px 10px rgba(0, 180, 219, 0.08) !important;
+  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.08) !important;
 }
 
 body.light-theme .sidebar-footer {
@@ -3144,17 +3199,7 @@ body.light-theme .sidebar-footer {
   color: #64748b !important;
 }
 
-body.light-theme .announcement-bar-desktop {
-  background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%) !important;
-  border-bottom: 1px solid #bae6fd !important;
-  color: #0369a1 !important;
-}
-
-body.light-theme .announcement-badge-desktop {
-  background: #0284c7 !important;
-  color: #ffffff !important;
-}
-
+/* 4. 主内容面板与卡片容器 */
 body.light-theme .main-content {
   background: #f8fafc !important;
 }
@@ -3169,7 +3214,7 @@ body.light-theme .pane-header h2 {
 body.light-theme .subtitle,
 body.light-theme p,
 body.light-theme label {
-  color: #475569 !important;
+  color: #334155 !important;
 }
 
 body.light-theme .card,
@@ -3179,12 +3224,43 @@ body.light-theme .mcp-card,
 body.light-theme .skill-card,
 body.light-theme .feedback-stream-card,
 body.light-theme .feedback-write-box,
-body.light-theme .local-account-card {
+body.light-theme .local-account-card,
+body.light-theme .user-manage-card {
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05) !important;
+  color: #0f172a !important;
 }
 
+/* 5. 按钮样式全量亮色高对比适配 */
+body.light-theme .btn-primary,
+body.light-theme .theme-custom-button,
+body.light-theme #btn-add-account,
+body.light-theme #btn-install-patch {
+  background: linear-gradient(135deg, #0284c7, #0369a1) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25) !important;
+}
+
+body.light-theme .btn-secondary,
+body.light-theme .theme-native-button,
+body.light-theme #btn-refresh-accounts,
+body.light-theme #btn-restore-original {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #334155 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.light-theme .btn-secondary:hover,
+body.light-theme .theme-native-button:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #94a3b8 !important;
+}
+
+/* 6. 输入框、选择框与文本域 */
 body.light-theme input[type="text"],
 body.light-theme input[type="password"],
 body.light-theme textarea,
@@ -3195,6 +3271,12 @@ body.light-theme select {
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
 }
 
+body.light-theme input[type="text"]::placeholder,
+body.light-theme input[type="password"]::placeholder,
+body.light-theme textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
 body.light-theme input:focus,
 body.light-theme textarea:focus,
 body.light-theme select:focus {
@@ -3202,37 +3284,61 @@ body.light-theme select:focus {
   box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
 }
 
-body.light-theme .btn-secondary {
-  background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-  color: #334155 !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-}
-
-body.light-theme .btn-secondary:hover {
-  background: #f1f5f9 !important;
-  color: #0f172a !important;
-  border-color: #94a3b8 !important;
-}
-
-body.light-theme .cyber-stat-card {
+/* 7. 账号卡片与 Pill 徽章超高对比度 */
+body.light-theme .local-account-card {
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04) !important;
 }
 
-body.light-theme .cyber-card-title {
+body.light-theme .account-tag,
+body.light-theme .model-badge,
+body.light-theme [class*="badge"],
+body.light-theme [style*="background: #e6f7ff"],
+body.light-theme [style*="background:#e6f7ff"] {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+  border: 1px solid #bae6fd !important;
+}
+
+body.light-theme [style*="background: #fffbe6"] {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border: 1px solid #fde68a !important;
+}
+
+/* 8. 皮肤主题卡片与预制主题黑框替换 */
+body.light-theme .theme-card,
+body.light-theme [style*="background: #52616b"],
+body.light-theme [style*="background:#52616b"],
+body.light-theme [style*="background: #160826"] {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+body.light-theme .theme-title,
+body.light-theme .theme-desc {
+  color: #0f172a !important;
+}
+
+/* 9. 留言看板与用户管理卡片 */
+body.light-theme .feedback-author,
+body.light-theme .user-card-name {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+body.light-theme .feedback-time,
+body.light-theme .user-card-stat {
   color: #64748b !important;
 }
 
-body.light-theme .cyber-card-value {
-  color: #0f172a !important;
+body.light-theme .btn-delete-feedback,
+body.light-theme [style*="color: #f06c8b"] {
+  color: #e11d48 !important;
 }
 
-body.light-theme .cyber-progress-track {
-  background: #e2e8f0 !important;
-}
-
+/* 10. 底盘控制台与状态栏 */
 body.light-theme .terminal-bar {
   background: #0f172a !important;
   color: #38bdf8 !important;
@@ -3240,14 +3346,15 @@ body.light-theme .terminal-bar {
 }
 
 body.light-theme .token-log-list {
-  background: #f8fafc !important;
+  background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
 }
 
+/* 11. 弹窗模态框 */
 body.light-theme .modal-content {
   background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12) !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15) !important;
   color: #0f172a !important;
 }
 
