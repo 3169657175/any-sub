@@ -1912,10 +1912,10 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
     }
     const quotaSummaryData = await quotaRes.json();
 
-    let gemini5hVal = null;
-    let geminiWeeklyVal = null;
-    let claude5hVal = null;
-    let claudeWeeklyVal = null;
+    let gemini5hVal = null, gemini5hReset = null;
+    let geminiWeeklyVal = null, geminiWeeklyReset = null;
+    let claude5hVal = null, claude5hReset = null;
+    let claudeWeeklyVal = null, claudeWeeklyReset = null;
 
     if (quotaSummaryData && Array.isArray(quotaSummaryData.groups)) {
       for (const group of quotaSummaryData.groups) {
@@ -1926,12 +1926,16 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
 
           if (bucket.bucketId === 'gemini-5h') {
             gemini5hVal = percent;
+            gemini5hReset = bucket.resetTime || null;
           } else if (bucket.bucketId === 'gemini-weekly') {
             geminiWeeklyVal = percent;
+            geminiWeeklyReset = bucket.resetTime || null;
           } else if (bucket.bucketId === '3p-5h') {
             claude5hVal = percent;
+            claude5hReset = bucket.resetTime || null;
           } else if (bucket.bucketId === '3p-weekly') {
             claudeWeeklyVal = percent;
+            claudeWeeklyReset = bucket.resetTime || null;
           }
         }
       }
@@ -1948,7 +1952,11 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
         gemini5h: `${gemini5hVal}%`,
         geminiWeekly: `${geminiWeeklyVal}%`,
         claude5h: `${claude5hVal}%`,
-        claudeWeekly: `${claudeWeeklyVal}%`
+        claudeWeekly: `${claudeWeeklyVal}%`,
+        gemini5hReset,
+        geminiWeeklyReset,
+        claude5hReset,
+        claudeWeeklyReset
       }
     };
   } catch (err) {

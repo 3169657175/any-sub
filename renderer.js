@@ -542,32 +542,56 @@ function createLocalAccountRow(account, index, activeQuotaPromises) {
   } else {
     quotaPanel.innerHTML = `<div class="quota-spinner">正在查询实时额度...</div>`;
     
+    // 格式化重置倒计时
+    function formatResetTime(isoStr) {
+      if (!isoStr) return '';
+      try {
+        const target = new Date(isoStr);
+        const now = new Date();
+        const diffMs = target - now;
+        if (diffMs <= 0) return '';
+        const diffMins = Math.round(diffMs / 60000);
+        if (diffMins < 60) return `<span style="font-size:10px;opacity:0.75;margin-left:4px;">(${diffMins}m重置)</span>`;
+        const diffHours = Math.floor(diffMins / 60);
+        const remMins = diffMins % 60;
+        if (diffHours < 24) return `<span style="font-size:10px;opacity:0.75;margin-left:4px;">(${diffHours}h${remMins}m重置)</span>`;
+        const diffDays = Math.floor(diffHours / 24);
+        const remHours = diffHours % 24;
+        return `<span style="font-size:10px;opacity:0.75;margin-left:4px;">(${diffDays}d${remHours}h重置)</span>`;
+      } catch(e) { return ''; }
+    }
+
     // 异步拉取该账号的配额信息
     const qPromise = (async () => {
       try {
         const res = await window.agyHubAPI.fetchAccountQuota(account.id);
         if (res && res.success) {
+          const c5hR = formatResetTime(res.quota.claude5hReset);
+          const cWkR = formatResetTime(res.quota.claudeWeeklyReset);
+          const g5hR = formatResetTime(res.quota.gemini5hReset);
+          const gWkR = formatResetTime(res.quota.geminiWeeklyReset);
+
           quotaPanel.innerHTML = `
             <div class="quota-grid">
               <div class="quota-col">
-                <div class="quota-platform">Claude</div>
+                <div class="quota-platform">Claude / GPT</div>
                 <div class="quota-item">
-                  <div class="quota-label"><span>5h 限制</span> <span class="quota-val">${res.quota.claude5h}</span></div>
+                  <div class="quota-label"><span>5h 限制 ${c5hR}</span> <span class="quota-val">${res.quota.claude5h}</span></div>
                   <div class="quota-bar"><div class="quota-fill" style="width: ${res.quota.claude5h}"></div></div>
                 </div>
                 <div class="quota-item">
-                  <div class="quota-label"><span>每周上限</span> <span class="quota-val">${res.quota.claudeWeekly}</span></div>
+                  <div class="quota-label"><span>每周上限 ${cWkR}</span> <span class="quota-val">${res.quota.claudeWeekly}</span></div>
                   <div class="quota-bar"><div class="quota-fill" style="width: ${res.quota.claudeWeekly}"></div></div>
                 </div>
               </div>
               <div class="quota-col">
                 <div class="quota-platform">Gemini</div>
                 <div class="quota-item">
-                  <div class="quota-label"><span>5h 限制</span> <span class="quota-val">${res.quota.gemini5h}</span></div>
+                  <div class="quota-label"><span>5h 限制 ${g5hR}</span> <span class="quota-val">${res.quota.gemini5h}</span></div>
                   <div class="quota-bar"><div class="quota-fill" style="width: ${res.quota.gemini5h}"></div></div>
                 </div>
                 <div class="quota-item">
-                  <div class="quota-label"><span>每周上限</span> <span class="quota-val">${res.quota.geminiWeekly}</span></div>
+                  <div class="quota-label"><span>每周上限 ${gWkR}</span> <span class="quota-val">${res.quota.geminiWeekly}</span></div>
                   <div class="quota-bar"><div class="quota-fill" style="width: ${res.quota.geminiWeekly}"></div></div>
                 </div>
               </div>
