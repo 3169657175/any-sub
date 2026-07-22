@@ -1448,6 +1448,18 @@ ipcMain.handle('get-asar-versions', async (event, asarPath) => {
   return { success: true, originalVersion, patchVersion };
 });
 
+function getGoogleClientId() {
+  const p1 = 'MTA3MTAwNjA2MDU5MS10bWhzc2lu';
+  const p2 = 'MmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlcC5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==';
+  return Buffer.from(p1 + p2, 'base64').toString('utf8');
+}
+
+function getGoogleClientSecret() {
+  const s1 = 'R09DU1BYLUs1';
+  const s2 = 'OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY=';
+  return Buffer.from(s1 + s2, 'base64').toString('utf8');
+}
+
 // 读取 Antigravity 本地账号元数据。Token 永远不会离开主进程。
 ipcMain.handle('list-local-accounts', async () => {
   try {
@@ -1455,11 +1467,56 @@ ipcMain.handle('list-local-accounts', async () => {
     const registryPath = path.join(accountRoot, 'accounts.json');
     const detailRoot = path.join(accountRoot, 'accounts');
 
-    if (!fs.existsSync(registryPath)) {
-      return { success: true, accounts: [], currentAccountId: '' };
+    if (!fs.existsSync(accountRoot)) {
+      fs.mkdirSync(accountRoot, { recursive: true });
+    }
+    if (!fs.existsSync(detailRoot)) {
+      fs.mkdirSync(detailRoot, { recursive: true });
     }
 
-    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    let registry = { accounts: [], current_account_id: '' };
+    if (fs.existsSync(registryPath)) {
+      try {
+        registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+      } catch (_) {}
+    }
+    if (!Array.isArray(registry.accounts)) {
+      registry.accounts = [];
+    }
+
+    let dirty = false;
+
+    // 🌟 自动全盘扫描 accounts 物理文件夹下的所有 *.json 文件，实现客户端/小助手双向自动反向同步与补全！
+    if (fs.existsSync(detailRoot)) {
+      const files = fs.readdirSync(detailRoot).filter(f => f.endsWith('.json'));
+      for (const file of files) {
+        const fileId = path.basename(file, '.json');
+        const detailPath = path.join(detailRoot, file);
+        try {
+          const detail = JSON.parse(fs.readFileSync(detailPath, 'utf8'));
+          let tokenObj = null;
+          if (detail.token_storage === 'electron-safe-storage-v1' && typeof detail.token_encrypted === 'string') {
+            try {
+              const decrypted = safeStorage.decryptString(Buffer.from(detail.token_encrypted, 'base64'));
+              tokenObj = JSON.parse(decrypted);
+            } catch (_) {}
+          }
+          if (!tokenObj) tokenObj = detail.token;
+
+          if (tokenObj && tokenObj.refresh_token) {
+            const email = normalizeAccountEmail(detail.email || '').slice(0, 254);
+            const fallbackName = email.includes('@') ? email.split('@')[0] : '未命名账号';
+            const name = String(detail.name || fallbackName).slice(0, 80);
+
+            const exists = registry.accounts.some(a => a.id === fileId || (email && a.email && a.email.toLowerCase() === email.toLowerCase()));
+            if (!exists) {
+              registry.accounts.push({ id: fileId, email, name });
+              dirty = true;
+            }
+          }
+        } catch (_) {}
+      }
+    }
     const currentAccountId = typeof registry.current_account_id === 'string'
       ? registry.current_account_id
       : '';
@@ -1800,18 +1857,6 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
       }
     }
     if (!tokenObj) tokenObj = detail.token;
-
-function getGoogleClientId() {
-  const p1 = 'MTA3MTAwNjA2MDU5MS10bWhzc2lu';
-  const p2 = 'MmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlcC5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==';
-  return Buffer.from(p1 + p2, 'base64').toString('utf8');
-}
-
-function getGoogleClientSecret() {
-  const s1 = 'R09DU1BYLUs1';
-  const s2 = 'OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY=';
-  return Buffer.from(s1 + s2, 'base64').toString('utf8');
-}
 
     if (!tokenObj || !tokenObj.refresh_token) {
       throw new Error('无有效刷新令牌');
