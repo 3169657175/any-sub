@@ -1929,54 +1929,14 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
     const tokenData = await tokenRes.json();
     const accessToken = tokenData.access_token;
 
-    // 2. 优先调用 3.6 Flash 发布后的最新 API (fetchAvailableModels) 获取模型级实时配额
+    // 2. 优先调用旧接口 retrieveUserQuotaSummary 获取真实的全局 Bucket 额度
     let gemini5hVal = null, gemini5hReset = null;
     let geminiWeeklyVal = null, geminiWeeklyReset = null;
     let claude5hVal = null, claude5hReset = null;
     let claudeWeeklyVal = null, claudeWeeklyReset = null;
 
+    let projectId = 'gemini_virtual_primary';
     try {
-      const modelsRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Antigravity-Quota-Watcher'
-        },
-        body: JSON.stringify({ project: 'gemini_virtual_primary' })
-      });
-
-      if (modelsRes.ok) {
-        const modelsJson = await modelsRes.json();
-        if (modelsJson && modelsJson.models) {
-          const gModel = modelsJson.models['gemini-3-flash-agent'] || modelsJson.models['gemini-pro-agent'] || modelsJson.models['gemini-3.5-flash-low'] || modelsJson.models['gemini-2.5-pro'];
-          if (gModel && gModel.quotaInfo) {
-            const frac = gModel.quotaInfo.remainingFraction !== undefined ? gModel.quotaInfo.remainingFraction : 1.0;
-            const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
-            gemini5hVal = pct;
-            geminiWeeklyVal = pct;
-            gemini5hReset = gModel.quotaInfo.resetTime || null;
-            geminiWeeklyReset = gModel.quotaInfo.resetTime || null;
-          }
-
-          const cModel = modelsJson.models['claude-sonnet-4-6'] || modelsJson.models['claude-opus-4-6-thinking'];
-          if (cModel && cModel.quotaInfo) {
-            const frac = cModel.quotaInfo.remainingFraction !== undefined ? cModel.quotaInfo.remainingFraction : 1.0;
-            const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
-            claude5hVal = pct;
-            claudeWeeklyVal = pct;
-            claude5hReset = cModel.quotaInfo.resetTime || null;
-            claudeWeeklyReset = cModel.quotaInfo.resetTime || null;
-          }
-        }
-      }
-    } catch (e) {
-      // 忽略单个新接口异常
-    }
-
-    // 3. 只有在新接口未能成功获取 Gemini / Claude 配额时，才用旧接口 retrieveUserQuotaSummary 兜底
-    if (gemini5hVal === null || claude5hVal === null || geminiWeeklyVal === null || claudeWeeklyVal === null) {
-      let projectId = 'gemini_virtual_primary';
       let quotaRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
         method: 'POST',
         headers: {
@@ -2010,22 +1970,62 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
               const frac = bucket.remainingFraction !== undefined ? bucket.remainingFraction : 1.0;
               const percent = Math.round(Math.max(0, Math.min(1, frac)) * 100);
 
-              if (bucket.bucketId === 'gemini-5h' && gemini5hVal === null) {
+              if (bucket.bucketId === 'gemini-5h') {
                 gemini5hVal = percent;
                 gemini5hReset = bucket.resetTime || null;
-              } else if (bucket.bucketId === 'gemini-weekly' && geminiWeeklyVal === null) {
+              } else if (bucket.bucketId === 'gemini-weekly') {
                 geminiWeeklyVal = percent;
                 geminiWeeklyReset = bucket.resetTime || null;
-              } else if (bucket.bucketId === '3p-5h' && claude5hVal === null) {
+              } else if (bucket.bucketId === '3p-5h') {
                 claude5hVal = percent;
                 claude5hReset = bucket.resetTime || null;
-              } else if (bucket.bucketId === '3p-weekly' && claudeWeeklyVal === null) {
+              } else if (bucket.bucketId === '3p-weekly') {
                 claudeWeeklyVal = percent;
                 claudeWeeklyReset = bucket.resetTime || null;
               }
             }
           }
         }
+      }
+    } catch (e) {
+      // 忽略异常
+    }
+
+    // 3. 如果获取不到真实的全局 Bucket，才用新接口 fetchAvailableModels 的单模型额度兜底
+    if (gemini5hVal === null || claude5hVal === null || geminiWeeklyVal === null || claudeWeeklyVal === null) {
+      try {
+        const modelsRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'Antigravity-Quota-Watcher'
+          },
+          body: JSON.stringify({ project: 'gemini_virtual_primary' })
+        });
+
+        if (modelsRes.ok) {
+          const modelsJson = await modelsRes.json();
+          if (modelsJson && modelsJson.models) {
+            const gModel = modelsJson.models['gemini-3-flash-agent'] || modelsJson.models['gemini-pro-agent'] || modelsJson.models['gemini-3.5-flash-low'] || modelsJson.models['gemini-2.5-pro'];
+            if (gModel && gModel.quotaInfo) {
+              const frac = gModel.quotaInfo.remainingFraction !== undefined ? gModel.quotaInfo.remainingFraction : 1.0;
+              const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+              if (gemini5hVal === null) { gemini5hVal = pct; gemini5hReset = gModel.quotaInfo.resetTime || null; }
+              if (geminiWeeklyVal === null) { geminiWeeklyVal = pct; geminiWeeklyReset = gModel.quotaInfo.resetTime || null; }
+            }
+
+            const cModel = modelsJson.models['claude-sonnet-4-6'] || modelsJson.models['claude-opus-4-6-thinking'];
+            if (cModel && cModel.quotaInfo) {
+              const frac = cModel.quotaInfo.remainingFraction !== undefined ? cModel.quotaInfo.remainingFraction : 1.0;
+              const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+              if (claude5hVal === null) { claude5hVal = pct; claude5hReset = cModel.quotaInfo.resetTime || null; }
+              if (claudeWeeklyVal === null) { claudeWeeklyVal = pct; claudeWeeklyReset = cModel.quotaInfo.resetTime || null; }
+            }
+          }
+        }
+      } catch (e) {
+        // 忽略新接口异常
       }
     }
 
