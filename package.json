@@ -1,6 +1,6 @@
 {
   "name": "agy-hub",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "main.js",
   "license": "MIT",
   "scripts": {
@@ -52,9 +52,9 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": false
     }
   },
   "dependencies": {
