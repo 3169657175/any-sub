@@ -1487,12 +1487,14 @@ ipcMain.handle('list-local-accounts', async () => {
     let dirty = false;
 
     // 🌟 自动全盘扫描 accounts 物理文件夹下的所有 *.json 文件，实现客户端/小助手双向自动反向同步与补全！
+    const fileAccountMap = new Map(); // email.toLowerCase() -> 最新的物理凭据信息
     if (fs.existsSync(detailRoot)) {
       const files = fs.readdirSync(detailRoot).filter(f => f.endsWith('.json'));
       for (const file of files) {
         const fileId = path.basename(file, '.json');
         const detailPath = path.join(detailRoot, file);
         try {
+          const stat = fs.statSync(detailPath);
           const detail = JSON.parse(fs.readFileSync(detailPath, 'utf8'));
           let tokenObj = null;
           if (detail.token_storage === 'electron-safe-storage-v1' && typeof detail.token_encrypted === 'string') {
@@ -1504,19 +1506,65 @@ ipcMain.handle('list-local-accounts', async () => {
           if (!tokenObj) tokenObj = detail.token;
 
           if (tokenObj && tokenObj.refresh_token) {
-            const email = normalizeAccountEmail(detail.email || '').slice(0, 254);
+            const rawEmail = detail.email || tokenObj.email || '';
+            const email = normalizeAccountEmail(rawEmail).slice(0, 254);
+            if (!email) continue;
+
             const fallbackName = email.includes('@') ? email.split('@')[0] : '未命名账号';
             const name = String(detail.name || fallbackName).slice(0, 80);
 
-            const exists = registry.accounts.some(a => a.id === fileId || (email && a.email && a.email.toLowerCase() === email.toLowerCase()));
-            if (!exists) {
-              registry.accounts.push({ id: fileId, email, name });
-              dirty = true;
+            const existing = fileAccountMap.get(email.toLowerCase());
+            if (!existing || stat.mtimeMs > existing.mtimeMs) {
+              fileAccountMap.set(email.toLowerCase(), {
+                id: fileId,
+                email,
+                name,
+                mtimeMs: stat.mtimeMs
+              });
             }
           }
         } catch (_) {}
       }
     }
+
+    // 根据全量最新物理文件重新建构/平滑同步 registry.accounts 列表
+    const newAccountsList = [];
+    const processedEmails = new Set();
+
+    // 先保留并更新已在 registry.accounts 中的有效账号（将 ID 自动提速更新为最新的物理文件 ID）
+    for (const entry of Array.isArray(registry.accounts) ? registry.accounts : []) {
+      const entryEmail = normalizeAccountEmail(entry.email || '').toLowerCase();
+      if (!entryEmail) continue;
+
+      const newestPhysical = fileAccountMap.get(entryEmail);
+      if (newestPhysical) {
+        if (!processedEmails.has(entryEmail)) {
+          if (entry.id !== newestPhysical.id) dirty = true;
+          newAccountsList.push({
+            id: newestPhysical.id,
+            email: newestPhysical.email,
+            name: entry.name || newestPhysical.name
+          });
+          processedEmails.add(entryEmail);
+        }
+      }
+    }
+
+    // 再追加全新的物理账号文件（客户端中刚刚登录的新邮箱账号）
+    for (const [emailKey, physical] of fileAccountMap.entries()) {
+      if (!processedEmails.has(emailKey)) {
+        newAccountsList.push({
+          id: physical.id,
+          email: physical.email,
+          name: physical.name
+        });
+        processedEmails.add(emailKey);
+        dirty = true;
+      }
+    }
+
+    registry.accounts = newAccountsList;
+
     const currentAccountId = typeof registry.current_account_id === 'string'
       ? registry.current_account_id
       : '';
