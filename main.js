@@ -1901,72 +1901,80 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
       if (modelsRes.ok) {
         const modelsJson = await modelsRes.json();
         if (modelsJson && modelsJson.models) {
-          const gModel = modelsJson.models['gemini-3-flash-agent'] || modelsJson.models['gemini-pro-agent'] || modelsJson.models['gemini-3.5-flash-low'];
+          const gModel = modelsJson.models['gemini-3-flash-agent'] || modelsJson.models['gemini-pro-agent'] || modelsJson.models['gemini-3.5-flash-low'] || modelsJson.models['gemini-2.5-pro'];
           if (gModel && gModel.quotaInfo) {
             const frac = gModel.quotaInfo.remainingFraction !== undefined ? gModel.quotaInfo.remainingFraction : 1.0;
-            gemini5hVal = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+            const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+            gemini5hVal = pct;
+            geminiWeeklyVal = pct;
             gemini5hReset = gModel.quotaInfo.resetTime || null;
+            geminiWeeklyReset = gModel.quotaInfo.resetTime || null;
           }
 
           const cModel = modelsJson.models['claude-sonnet-4-6'] || modelsJson.models['claude-opus-4-6-thinking'];
           if (cModel && cModel.quotaInfo) {
             const frac = cModel.quotaInfo.remainingFraction !== undefined ? cModel.quotaInfo.remainingFraction : 1.0;
-            claude5hVal = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+            const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+            claude5hVal = pct;
+            claudeWeeklyVal = pct;
             claude5hReset = cModel.quotaInfo.resetTime || null;
+            claudeWeeklyReset = cModel.quotaInfo.resetTime || null;
           }
         }
       }
     } catch (e) {
-      // 忽略单个新接口异常，继续尝试旧接口补充
+      // 忽略单个新接口异常
     }
 
-    // 3. 补充获取全局配额组数据 (retrieveUserQuotaSummary)
-    let projectId = 'gemini_virtual_primary';
-    let quotaRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Antigravity-Quota-Watcher'
-      },
-      body: JSON.stringify({ project: projectId })
-    });
-
-    if (!quotaRes.ok) {
-      const fallbackProjectId = tokenObj.project_id || 'bamboo-precept-lgxtn';
-      quotaRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
+    // 3. 只有在新接口未能成功获取 Gemini / Claude 配额时，才用旧接口 retrieveUserQuotaSummary 兜底
+    if (gemini5hVal === null || claude5hVal === null || geminiWeeklyVal === null || claudeWeeklyVal === null) {
+      let projectId = 'gemini_virtual_primary';
+      let quotaRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
           'User-Agent': 'Antigravity-Quota-Watcher'
         },
-        body: JSON.stringify({ project: fallbackProjectId })
+        body: JSON.stringify({ project: projectId })
       });
-      projectId = fallbackProjectId;
-    }
 
-    if (quotaRes.ok) {
-      const quotaSummaryData = await quotaRes.json();
-      if (quotaSummaryData && Array.isArray(quotaSummaryData.groups)) {
-        for (const group of quotaSummaryData.groups) {
-          if (!Array.isArray(group.buckets)) continue;
-          for (const bucket of group.buckets) {
-            const frac = bucket.remainingFraction !== undefined ? bucket.remainingFraction : 1.0;
-            const percent = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+      if (!quotaRes.ok) {
+        const fallbackProjectId = tokenObj.project_id || 'bamboo-precept-lgxtn';
+        quotaRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'Antigravity-Quota-Watcher'
+          },
+          body: JSON.stringify({ project: fallbackProjectId })
+        });
+        projectId = fallbackProjectId;
+      }
 
-            if (bucket.bucketId === 'gemini-5h' && gemini5hVal === null) {
-              gemini5hVal = percent;
-              gemini5hReset = bucket.resetTime || null;
-            } else if (bucket.bucketId === 'gemini-weekly') {
-              geminiWeeklyVal = percent;
-              geminiWeeklyReset = bucket.resetTime || null;
-            } else if (bucket.bucketId === '3p-5h' && claude5hVal === null) {
-              claude5hVal = percent;
-              claude5hReset = bucket.resetTime || null;
-            } else if (bucket.bucketId === '3p-weekly') {
-              claudeWeeklyVal = percent;
-              claudeWeeklyReset = bucket.resetTime || null;
+      if (quotaRes.ok) {
+        const quotaSummaryData = await quotaRes.json();
+        if (quotaSummaryData && Array.isArray(quotaSummaryData.groups)) {
+          for (const group of quotaSummaryData.groups) {
+            if (!Array.isArray(group.buckets)) continue;
+            for (const bucket of group.buckets) {
+              const frac = bucket.remainingFraction !== undefined ? bucket.remainingFraction : 1.0;
+              const percent = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+
+              if (bucket.bucketId === 'gemini-5h' && gemini5hVal === null) {
+                gemini5hVal = percent;
+                gemini5hReset = bucket.resetTime || null;
+              } else if (bucket.bucketId === 'gemini-weekly' && geminiWeeklyVal === null) {
+                geminiWeeklyVal = percent;
+                geminiWeeklyReset = bucket.resetTime || null;
+              } else if (bucket.bucketId === '3p-5h' && claude5hVal === null) {
+                claude5hVal = percent;
+                claude5hReset = bucket.resetTime || null;
+              } else if (bucket.bucketId === '3p-weekly' && claudeWeeklyVal === null) {
+                claudeWeeklyVal = percent;
+                claudeWeeklyReset = bucket.resetTime || null;
+              }
             }
           }
         }
