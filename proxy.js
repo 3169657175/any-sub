@@ -7,6 +7,7 @@ const net = require('net');
 const zlib = require('zlib');
 const { app, session } = require('electron');
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const { buildTokenStats, extractOfficialUsage, shouldTrackModelRequest } = require('./tokenUsage');
 
 const DEFAULT_API_UPSTREAM = 'https://generativelanguage.googleapis.com';
 const DEFAULT_CLOUD_UPSTREAM = 'https://daily-cloudcode-pa.googleapis.com';
@@ -18,37 +19,22 @@ let activeRoutes = new Map();
 let activeMainWindow = null;
 
 function defaultStats() {
-  return {
-    logs: [],
-    total_input: 0,
-    total_output: 0,
-    total_cached: 0,
-    totalTokens: 0,
-    promptTokens: 0,
-    completionTokens: 0,
-    cachedTokens: 0
-  };
+  return buildTokenStats([]);
 }
 
 function saveTokenLog(logEntry) {
   try {
     const statsPath = path.join(app.getPath('userData'), 'token_stats.json');
-    let stats = defaultStats();
+    let logs = [];
     if (fs.existsSync(statsPath)) {
       try {
-        stats = { ...stats, ...JSON.parse(fs.readFileSync(statsPath, 'utf8')) };
+        const stored = JSON.parse(fs.readFileSync(statsPath, 'utf8'));
+        logs = Array.isArray(stored.logs) ? stored.logs : [];
       } catch (e) {}
     }
 
-    stats.logs.unshift(logEntry);
-    stats.logs = stats.logs.slice(0, 500);
-    stats.total_input += logEntry.input || 0;
-    stats.total_output += logEntry.output || 0;
-    stats.total_cached += logEntry.cached || 0;
-    stats.promptTokens = stats.total_input;
-    stats.completionTokens = stats.total_output;
-    stats.cachedTokens = stats.total_cached;
-    stats.totalTokens = stats.total_input + stats.total_output;
+    logs.unshift(logEntry);
+    const stats = buildTokenStats(logs);
 
     fs.writeFileSync(statsPath, JSON.stringify(stats, null, 2), 'utf8');
     return stats;
@@ -153,9 +139,13 @@ function notifyFrontend(mainWindow, logEntry, stats) {
       promptTokens: logEntry.input,
       completionTokens: logEntry.output,
       cachedTokens: logEntry.cached,
+      cacheKnown: Boolean(logEntry.cacheKnown),
       model: logEntry.model,
       estimated: Boolean(logEntry.estimated),
-      source: logEntry.source
+      source: logEntry.source,
+      requestPath: logEntry.requestPath,
+      contentType: logEntry.contentType,
+      usageProtocol: logEntry.usageProtocol
     });
   } catch (e) {}
 }
@@ -313,11 +303,7 @@ function extractModel(requestBody) {
 }
 
 function shouldTrackRequest(method, requestUrl, service) {
-  if (!['POST', 'PUT', 'PATCH'].includes(String(method || '').toUpperCase())) return false;
-  const lower = String(requestUrl || '').toLowerCase();
-  if (/(oauth|auth\/|tokeninfo|quota|feedback|telemetry|health|models(?:\?|$))/.test(lower)) return false;
-  if (/(generate|stream|completion|message|chat|cascade|assist|prompt)/.test(lower)) return true;
-  return service === 'cloud-code';
+  return shouldTrackModelRequest(method, requestUrl, service);
 }
 
 function createForwardOptions(request, upstreamUrl, outboundProxy) {
@@ -344,6 +330,7 @@ function handleManualReport(req, res, mainWindow) {
         input: toFiniteNumber(payload.promptTokens ?? payload.input) || 0,
         output: toFiniteNumber(payload.completionTokens ?? payload.output) || 0,
         cached: toFiniteNumber(payload.cachedTokens ?? payload.cached) || 0,
+        cacheKnown: Boolean(payload.cacheKnown),
         duration: toFiniteNumber(payload.duration) || 0,
         estimated: Boolean(payload.estimated),
         source: payload.source || 'manual'
@@ -418,7 +405,8 @@ function createReverseProxyServer(route, mainWindow) {
 
             const compressed = Buffer.concat(responseChunks);
             const decoded = await decodeResponse(compressed, upstreamResponse.headers['content-encoding']);
-            const officialUsage = extractUsageFromText(decoded.toString('utf8'));
+            const contentType = String(upstreamResponse.headers['content-type'] || '');
+            const officialUsage = extractOfficialUsage(decoded, contentType);
             const logEntry = {
               id: Date.now().toString(),
               time: new Date().toISOString(),
@@ -426,10 +414,15 @@ function createReverseProxyServer(route, mainWindow) {
               input: officialUsage ? officialUsage.input : estimateTokens(requestBody),
               output: officialUsage ? officialUsage.output : estimateTokens(decoded),
               cached: officialUsage ? officialUsage.cached : 0,
+              cacheKnown: Boolean(officialUsage && officialUsage.cacheKnown),
               duration: Date.now() - startedAt,
               estimated: !officialUsage,
               source: currentRoute.service,
-              captureOverflow
+              captureOverflow,
+              requestPath: req.url,
+              contentType,
+              responseBytes: decoded.length,
+              usageProtocol: officialUsage ? officialUsage.protocol : 'unparsed'
             };
             if (logEntry.input > 0 || logEntry.output > 0) {
               const stats = saveTokenLog(logEntry);
@@ -534,15 +527,7 @@ function getInitialStats() {
     const statsPath = path.join(app.getPath('userData'), 'token_stats.json');
     if (fs.existsSync(statsPath)) {
       const raw = JSON.parse(fs.readFileSync(statsPath, 'utf8'));
-      return {
-        ...defaultStats(),
-        ...raw,
-        logs: raw.logs || [],
-        totalTokens: (raw.total_input || 0) + (raw.total_output || 0),
-        promptTokens: raw.total_input || 0,
-        completionTokens: raw.total_output || 0,
-        cachedTokens: raw.total_cached || 0
-      };
+      return buildTokenStats(raw.logs || []);
     }
   } catch (e) {}
   return defaultStats();

@@ -1882,6 +1882,37 @@ ipcMain.handle('open-external-url', async (event, url) => {
 let oauthServer = null;
 let currentOauthState = null;
 
+const QUOTA_API_HOSTS = [
+  'daily-cloudcode-pa.googleapis.com',
+  'cloudcode-pa.googleapis.com'
+];
+
+async function fetchQuotaApi(net, endpoint, accessToken, projects) {
+  let lastError = 'No quota endpoint responded successfully';
+  for (const host of QUOTA_API_HOSTS) {
+    for (const project of projects) {
+      try {
+        const response = await net.fetch(`https://${host}/v1internal:${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'Antigravity-Quota-Watcher'
+          },
+          body: JSON.stringify({ project })
+        });
+        if (response.ok) {
+          return { data: await response.json(), host, project };
+        }
+        lastError = `${host}/${endpoint} returned HTTP ${response.status}`;
+      } catch (error) {
+        lastError = `${host}/${endpoint}: ${error.message}`;
+      }
+    }
+  }
+  throw new Error(lastError);
+}
+
 // A. 注入 fetch-account-quota 用以向小助手卡片拉取配额
 ipcMain.handle('fetch-account-quota', async (event, accountId) => {
   try {
@@ -1935,34 +1966,19 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
     let claude5hVal = null, claude5hReset = null;
     let claudeWeeklyVal = null, claudeWeeklyReset = null;
 
-    let projectId = 'gemini_virtual_primary';
+    const quotaProjects = [...new Set([
+      'gemini_virtual_primary',
+      tokenObj.project_id,
+      'bamboo-precept-lgxtn'
+    ].filter(Boolean))];
+    let projectId = quotaProjects[0];
+    let quotaSourceHost = null;
     try {
-      let quotaRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Antigravity-Quota-Watcher'
-        },
-        body: JSON.stringify({ project: projectId })
-      });
-
-      if (!quotaRes.ok) {
-        const fallbackProjectId = tokenObj.project_id || 'bamboo-precept-lgxtn';
-        quotaRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-            'User-Agent': 'Antigravity-Quota-Watcher'
-          },
-          body: JSON.stringify({ project: fallbackProjectId })
-        });
-        projectId = fallbackProjectId;
-      }
-
-      if (quotaRes.ok) {
-        const quotaSummaryData = await quotaRes.json();
+      const quotaResult = await fetchQuotaApi(net, 'retrieveUserQuotaSummary', accessToken, quotaProjects);
+      projectId = quotaResult.project;
+      quotaSourceHost = quotaResult.host;
+      const quotaSummaryData = quotaResult.data;
+      if (quotaSummaryData) {
         if (quotaSummaryData && Array.isArray(quotaSummaryData.groups)) {
           for (const group of quotaSummaryData.groups) {
             if (!Array.isArray(group.buckets)) continue;
@@ -1988,31 +2004,25 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
         }
       }
     } catch (e) {
-      // 忽略异常
+      console.error('[fetch-quota] Quota summary failed:', e.message);
     }
 
     // 3. 如果获取不到真实的全局 Bucket，才用新接口 fetchAvailableModels 的单模型额度兜底
     if (gemini5hVal === null || claude5hVal === null || geminiWeeklyVal === null || claudeWeeklyVal === null) {
       try {
-        const modelsRes = await net.fetch('https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-            'User-Agent': 'Antigravity-Quota-Watcher'
-          },
-          body: JSON.stringify({ project: 'gemini_virtual_primary' })
-        });
-
-        if (modelsRes.ok) {
-          const modelsJson = await modelsRes.json();
+        const modelsResult = await fetchQuotaApi(net, 'fetchAvailableModels', accessToken, quotaProjects);
+        if (!quotaSourceHost) {
+          quotaSourceHost = modelsResult.host;
+          projectId = modelsResult.project;
+        }
+        const modelsJson = modelsResult.data;
+        if (modelsJson) {
           if (modelsJson && modelsJson.models) {
-            const gModel = modelsJson.models['gemini-3-flash-agent'] || modelsJson.models['gemini-pro-agent'] || modelsJson.models['gemini-3.5-flash-low'] || modelsJson.models['gemini-2.5-pro'];
+            const gModel = modelsJson.models['gemini-3.6-flash-tiered'] || modelsJson.models['gemini-3.6-flash-high'] || modelsJson.models['gemini-3.6-flash-medium'] || modelsJson.models['gemini-3.6-flash-low'] || modelsJson.models['gemini-3-flash-agent'] || modelsJson.models['gemini-pro-agent'] || modelsJson.models['gemini-3.5-flash-low'] || modelsJson.models['gemini-2.5-pro'];
             if (gModel && gModel.quotaInfo) {
               const frac = gModel.quotaInfo.remainingFraction !== undefined ? gModel.quotaInfo.remainingFraction : 1.0;
               const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
               if (gemini5hVal === null) { gemini5hVal = pct; gemini5hReset = gModel.quotaInfo.resetTime || null; }
-              if (geminiWeeklyVal === null) { geminiWeeklyVal = pct; geminiWeeklyReset = gModel.quotaInfo.resetTime || null; }
             }
 
             const cModel = modelsJson.models['claude-sonnet-4-6'] || modelsJson.models['claude-opus-4-6-thinking'];
@@ -2020,22 +2030,28 @@ ipcMain.handle('fetch-account-quota', async (event, accountId) => {
               const frac = cModel.quotaInfo.remainingFraction !== undefined ? cModel.quotaInfo.remainingFraction : 1.0;
               const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
               if (claude5hVal === null) { claude5hVal = pct; claude5hReset = cModel.quotaInfo.resetTime || null; }
-              if (claudeWeeklyVal === null) { claudeWeeklyVal = pct; claudeWeeklyReset = cModel.quotaInfo.resetTime || null; }
             }
           }
         }
       } catch (e) {
-        // 忽略新接口异常
+        console.error('[fetch-quota] Available models failed:', e.message);
       }
     }
 
-    if (gemini5hVal === null) gemini5hVal = 100;
-    if (geminiWeeklyVal === null) geminiWeeklyVal = 100;
-    if (claude5hVal === null) claude5hVal = 100;
-    if (claudeWeeklyVal === null) claudeWeeklyVal = 100;
+    const missingQuotaFields = [
+      ['gemini5h', gemini5hVal],
+      ['geminiWeekly', geminiWeeklyVal],
+      ['claude5h', claude5hVal],
+      ['claudeWeekly', claudeWeeklyVal]
+    ].filter(([, value]) => value === null).map(([name]) => name);
+    if (missingQuotaFields.length > 0) {
+      throw new Error(`Quota response is incomplete: ${missingQuotaFields.join(', ')}`);
+    }
 
     return {
       success: true,
+      projectId,
+      quotaSourceHost,
       quota: {
         gemini5h: `${gemini5hVal}%`,
         geminiWeekly: `${geminiWeeklyVal}%`,

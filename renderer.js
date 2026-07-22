@@ -566,6 +566,9 @@ function createLocalAccountRow(account, index, activeQuotaPromises) {
       try {
         const res = await window.agyHubAPI.fetchAccountQuota(account.id);
         if (res && res.success) {
+          if (res.quotaSourceHost) {
+            logToTerminal(`[Quota] ${account.email} source: ${res.quotaSourceHost}`);
+          }
           const c5hR = formatResetTime(res.quota.claude5hReset);
           const cWkR = formatResetTime(res.quota.claudeWeeklyReset);
           const g5hR = formatResetTime(res.quota.gemini5hReset);
@@ -3988,17 +3991,18 @@ async function initTokenMonitor() {
   function updateDashboard(stats) {
     if (!stats) return;
     statTotal.textContent = (stats.totalTokens || 0).toLocaleString();
-    statCached.textContent = (stats.cachedTokens || 0).toLocaleString();
+    const cacheDataAvailable = Boolean(stats.cacheDataAvailable);
+    statCached.textContent = cacheDataAvailable ? (stats.cachedTokens || 0).toLocaleString() : '--';
     statOutput.textContent = (stats.completionTokens || 0).toLocaleString();
     
-    let hitRate = 0;
-    if (stats.promptTokens > 0) {
-      hitRate = (stats.cachedTokens / stats.promptTokens) * 100;
+    let hitRate = null;
+    if (cacheDataAvailable && stats.cachePromptTokens > 0) {
+      hitRate = (stats.cachedTokens / stats.cachePromptTokens) * 100;
     }
-    statHitRate.textContent = hitRate.toFixed(1) + '%';
+    statHitRate.textContent = hitRate === null ? '--' : hitRate.toFixed(1) + '%';
     const fill = document.getElementById('cache-rate-fill');
     if (fill) {
-      fill.style.width = Math.min(100, Math.max(0, hitRate)).toFixed(1) + '%';
+      fill.style.width = hitRate === null ? '0%' : Math.min(100, Math.max(0, hitRate)).toFixed(1) + '%';
     }
   }
 
@@ -4022,9 +4026,13 @@ async function initTokenMonitor() {
                  duration: log.duration || 0,
                  promptTokens: log.input !== undefined ? log.input : (log.promptTokens || 0),
                  completionTokens: log.output !== undefined ? log.output : (log.completionTokens || 0),
-                 cachedTokens: log.cached !== undefined ? log.cached : (log.cachedTokens || 0),
-                 estimated: log.estimated,
-                 source: log.source
+                  cachedTokens: log.cached !== undefined ? log.cached : (log.cachedTokens || 0),
+                  cacheKnown: Boolean(log.cacheKnown),
+                  estimated: log.estimated,
+                  source: log.source,
+                  requestPath: log.requestPath,
+                  contentType: log.contentType,
+                  usageProtocol: log.usageProtocol
              };
         }
         return log;
@@ -4071,19 +4079,26 @@ async function initTokenMonitor() {
     if (window.currentFilter === 'all' && window.globalTokenStatsRaw) {
         updateDashboard(window.globalTokenStatsRaw);
     } else {
-        let tInput = 0, tOutput = 0, tCached = 0;
+        let tInput = 0, tOutput = 0, tCached = 0, tCachePrompt = 0, cacheSamples = 0;
         for (const log of processed) {
             if (log.type === 'res') {
                 tInput += log.promptTokens || 0;
                 tOutput += log.completionTokens || 0;
-                tCached += log.cachedTokens || 0;
+                if (log.cacheKnown) {
+                    tCached += log.cachedTokens || 0;
+                    tCachePrompt += log.promptTokens || 0;
+                    cacheSamples += 1;
+                }
             }
         }
         updateDashboard({
             totalTokens: tInput + tOutput,
             promptTokens: tInput,
             completionTokens: tOutput,
-            cachedTokens: tCached
+            cachedTokens: tCached,
+            cachePromptTokens: tCachePrompt,
+            cacheSamples,
+            cacheDataAvailable: cacheSamples > 0
         });
     }
 
@@ -4112,7 +4127,9 @@ async function initTokenMonitor() {
                 const isLocal = log.source === 'local-transcript';
                 const sourceLabel = isLocal ? '本地实时估算' : (log.source === 'manual' ? '手动' : (log.estimated ? '代理估算' : '官方'));
                 const duration = isLocal ? '' : `耗时: ${log.duration}ms | `;
-                details = `<span style="color:#fbd160;">[Res/${sourceLabel}]</span> ${duration}输入: ${estimateMark}${log.promptTokens} (缓存:${log.cachedTokens}) | 输出: ${estimateMark}${log.completionTokens}`;
+                const cacheText = log.cacheKnown ? log.cachedTokens : '未知';
+                const protocolText = !log.estimated && log.usageProtocol ? `/${log.usageProtocol}` : '';
+                details = `<span style="color:#fbd160;">[Res/${sourceLabel}${protocolText}]</span> ${duration}输入: ${estimateMark}${log.promptTokens} (缓存:${cacheText}) | 输出: ${estimateMark}${log.completionTokens}`;
             } else {
                 details = log.message;
             }

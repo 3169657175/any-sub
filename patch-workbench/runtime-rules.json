@@ -1,0 +1,18 @@
+[
+  {
+    "description": "Use the current Cloud Code quota service in the Antigravity account dialog",
+    "file": "dist/ipcHandlers.js",
+    "find": "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+    "replace": "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+    "expectedHits": 2,
+    "enabled": true
+  },
+  {
+    "description": "Do not turn missing quota fields into fake 100 percent values",
+    "file": "dist/ipcHandlers.js",
+    "find": "            if (gemini5hVal === null) gemini5hVal = 100;\n            if (geminiWeeklyVal === null) geminiWeeklyVal = 100;\n            if (claude5hVal === null) claude5hVal = 100;\n            if (claudeWeeklyVal === null) claudeWeeklyVal = 100;",
+    "replace": "            const missingQuotaFields = [\n                ['gemini5h', gemini5hVal],\n                ['geminiWeekly', geminiWeeklyVal],\n                ['claude5h', claude5hVal],\n                ['claudeWeekly', claudeWeeklyVal]\n            ].filter(([, value]) => value === null).map(([name]) => name);\n            if (missingQuotaFields.length > 0) {\n                throw new Error(`Quota response is incomplete: ${missingQuotaFields.join(', ')}`);\n            }",
+    "expectedHits": 1,
+    "enabled": true
+  }
+]

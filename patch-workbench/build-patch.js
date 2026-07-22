@@ -12,6 +12,7 @@ const baselineAsar = path.join(assetsDir, 'app.asar.baseline_stable');
 const outputAsar = path.join(assetsDir, 'app.asar');
 const reportPath = path.join(workbenchDir, 'last-build-report.json');
 const rulesPath = path.join(workbenchDir, 'translation-rules.json');
+const runtimeRulesPath = path.join(workbenchDir, 'runtime-rules.json');
 const headerPath = path.join(workbenchDir, 'injections', 'preload-header.js');
 const footerPath = path.join(workbenchDir, 'injections', 'preload-footer.js');
 
@@ -42,6 +43,9 @@ function applyLiteralRule(source, rule, index) {
   const hits = source.split(find).length - 1;
   if (hits === 0) {
     throw new Error(`Rule ${index + 1} did not match: ${find}`);
+  }
+  if (Number.isInteger(rule.expectedHits) && hits !== rule.expectedHits) {
+    throw new Error(`Rule ${index + 1} expected ${rule.expectedHits} matches but found ${hits}`);
   }
   return {
     source: source.split(find).join(replace),
@@ -107,6 +111,54 @@ if (footer) {
 new vm.Script(rebuiltPreload, { filename: 'dist/preload.js' });
 fs.writeFileSync(preloadPath, rebuiltPreload, 'utf8');
 
+const runtimeRules = ensureArray(JSON.parse(fs.readFileSync(runtimeRulesPath, 'utf8')), runtimeRulesPath);
+const allowedRuntimeFiles = new Set([
+  'dist/ipcHandlers.js',
+  'dist/main.js',
+  'dist/languageServer.js'
+]);
+const runtimeFiles = new Map();
+const appliedRuntimeRules = [];
+
+runtimeRules.forEach((rule, index) => {
+  if (!rule || rule.enabled === false) return;
+  const relativePath = String(rule.file || '').replace(/\\/g, '/');
+  if (!allowedRuntimeFiles.has(relativePath)) {
+    throw new Error(`Runtime rule ${index + 1} targets a forbidden file: ${relativePath}`);
+  }
+  const filePath = path.join(extractDir, ...relativePath.split('/'));
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Runtime rule ${index + 1} target is missing: ${relativePath}`);
+  }
+  const state = runtimeFiles.get(relativePath) || {
+    filePath,
+    original: fs.readFileSync(filePath, 'utf8'),
+    rebuilt: fs.readFileSync(filePath, 'utf8')
+  };
+  const result = applyLiteralRule(state.rebuilt, rule, index);
+  state.rebuilt = result.source;
+  runtimeFiles.set(relativePath, state);
+  if (result.changed) {
+    appliedRuntimeRules.push({
+      index: index + 1,
+      file: relativePath,
+      description: rule.description || '',
+      hits: result.hits
+    });
+  }
+});
+
+const rebuiltRuntimeFiles = [];
+for (const [relativePath, state] of runtimeFiles) {
+  new vm.Script(state.rebuilt, { filename: relativePath });
+  fs.writeFileSync(state.filePath, state.rebuilt, 'utf8');
+  rebuiltRuntimeFiles.push({
+    file: relativePath,
+    originalHash: sha256Buffer(Buffer.from(state.original, 'utf8')),
+    rebuiltHash: sha256Buffer(Buffer.from(state.rebuilt, 'utf8'))
+  });
+}
+
 const builtTempAsar = path.join(tempRoot, 'app.asar');
 
 Promise.resolve()
@@ -122,6 +174,8 @@ Promise.resolve()
       headerInjected: Boolean(header),
       footerInjected: Boolean(footer),
       appliedRules,
+      appliedRuntimeRules,
+      rebuiltRuntimeFiles,
       outputSize: fs.statSync(outputAsar).size
     };
     writeReport(report);

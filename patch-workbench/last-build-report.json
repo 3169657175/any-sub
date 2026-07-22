@@ -1,5 +1,5 @@
 {
-  "builtAt": "2026-07-22T02:46:14.047Z",
+  "builtAt": "2026-07-22T10:50:17.077Z",
   "baselineAsar": "C:\\Users\\niu\\.gemini\\antigravity\\scratch\\agy-hub\\assets\\app.asar.baseline_stable",
   "outputAsar": "C:\\Users\\niu\\.gemini\\antigravity\\scratch\\agy-hub\\assets\\app.asar",
   "originalPreloadHash": "59f10a80f3caca5564dbdbb68a5d8090d5514b125ed83f32ed2548b8786f40d0",
@@ -7,5 +7,26 @@
   "headerInjected": false,
   "footerInjected": false,
   "appliedRules": [],
-  "outputSize": 35530466
+  "appliedRuntimeRules": [
+    {
+      "index": 1,
+      "file": "dist/ipcHandlers.js",
+      "description": "Use the current Cloud Code quota service in the Antigravity account dialog",
+      "hits": 2
+    },
+    {
+      "index": 2,
+      "file": "dist/ipcHandlers.js",
+      "description": "Do not turn missing quota fields into fake 100 percent values",
+      "hits": 1
+    }
+  ],
+  "rebuiltRuntimeFiles": [
+    {
+      "file": "dist/ipcHandlers.js",
+      "originalHash": "0891e06ccf8956cdb0cd419b220e9989d3b65ef0607e1704cf25dbff169c94f8",
+      "rebuiltHash": "c56d45eef1d25d4c62190126f9b140defd257f58091985f86bba4ae1a5850afd"
+    }
+  ],
+  "outputSize": 35530699
 }

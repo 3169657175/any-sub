@@ -8,6 +8,7 @@
 - `../assets/app.asar.baseline_stable`：已经验证可用的冻结基线，不参与日常编辑。
 - `baseline-meta.json`：基线的创建时间、大小和 SHA-256。
 - `translation-rules.json`：日常补充汉化的位置。
+- `runtime-rules.json`：对受控运行文件执行带匹配次数校验的精确替换。
 - `injections/preload-header.js`：需要放在 `preload.js` 开头的少量代码，通常保持空白。
 - `injections/preload-footer.js`：需要放在 `preload.js` 末尾的少量代码，通常保持空白。
 - `build-patch.js`：从冻结基线重新生成 `assets/app.asar`。
@@ -72,6 +73,8 @@ npm.cmd run patch:verify
 - `dist/accountVault.js`
 
 同时会检查五个运行时 JavaScript 文件的语法，并确认模型 API 使用 31000、Cloud Code 使用 31001、官方接口回退存在、Token 上报使用 IPC。只有输出中出现 `"ok": true`，才进入一键注入测试。
+
+当前还会检查 Antigravity 本地账号弹窗使用 `daily-cloudcode-pa.googleapis.com` 查询额度，并阻止“字段缺失时显示 100%”的旧逻辑重新进入补丁包。
 
 ## 五、一键注入测试顺序
 
@@ -150,3 +153,21 @@ npm.cmd run patch:verify
 - 不在 `patch:verify` 失败后继续注入或发布安装包。
 
 这套流程的核心很简单：稳定包冻结，小改动分层，生成后强制验收，出问题就关闭新增层回到基线。
+
+## 十、额度数据来源
+
+AGY Hub 查询额度时必须优先使用 `daily-cloudcode-pa.googleapis.com`，它与 Antigravity 2.3.1 当前使用的 Cloud Code 服务一致。旧域名 `cloudcode-pa.googleapis.com` 只作为网络故障回退；在 Gemini 3.6 Flash 更新后，旧域名可能继续返回更新前的额度体系。
+
+额度解析失败时不得默认显示 `100%`。当前实现会显示查询失败，并在终端记录实际数据源，避免把“没有读到数据”误报为“额度充足”。
+
+## 十一、Token 与缓存统计口径
+
+Token 监控只把明确的生成、流式生成和聊天请求纳入统计，不再把所有 Cloud Code POST 请求当成模型调用。
+
+响应解析支持 JSON、SSE、protobuf 和 gRPC protobuf。日志标记为“官方”时，输入、输出和缓存来自响应中的 UsageMetadata；日志标记为“估算”时，输入与输出只是流量趋势，缓存显示为“未知”。官方缓存卡片和命中率只使用带 UsageMetadata 的记录，禁止用估算记录补成 `0`。
+
+协议解析的回归测试命令：
+
+```powershell
+npm.cmd run test:token-usage
+```

@@ -1,13 +1,14 @@
 {
   "name": "agy-hub",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "main": "main.js",
   "license": "MIT",
   "scripts": {
     "dist:sync": "electron-builder && node sync-d.js",
     "patch:baseline": "node patch-workbench/make-baseline.js",
     "patch:rebuild": "node patch-workbench/build-patch.js",
-    "patch:verify": "node patch-workbench/verify-patch.js"
+    "patch:verify": "node patch-workbench/verify-patch.js",
+    "test:token-usage": "node --test tokenUsage.test.js"
   },
   "build": {
     "appId": "com.agy.hub",

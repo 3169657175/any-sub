@@ -1,9 +1,9 @@
 {
-  "verifiedAt": "2026-07-22T02:46:25.846Z",
+  "verifiedAt": "2026-07-22T10:50:35.635Z",
   "ok": true,
   "archivePath": "C:\\Users\\niu\\.gemini\\antigravity\\scratch\\agy-hub\\assets\\app.asar",
-  "archiveSize": 35530466,
-  "archiveSha256": "529e3383d4760cbc980dd9a2bb24774d0523c0e7f98350b6e815f669ce02f96a",
+  "archiveSize": 35530699,
+  "archiveSha256": "d5fbcd7ca65fa20270c8fd21fa44ae6a77ef730e038d67210df24fa8de8a8897",
   "packageName": "antigravity",
   "packageVersion": "2.3.1",
   "requiredFiles": [
@@ -25,6 +25,8 @@
     "model API uses port 31000",
     "Cloud Code uses port 31001",
     "official endpoint fallback is present",
-    "Token reporting uses IPC"
+    "Token reporting uses IPC",
+    "account quota uses the daily Cloud Code endpoint",
+    "missing account quota is not reported as 100%"
   ]
 }

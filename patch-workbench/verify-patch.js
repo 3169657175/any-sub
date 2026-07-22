@@ -82,6 +82,7 @@ try {
   const languageServerSource = fs.readFileSync(path.join(extractDir, 'dist/languageServer.js'), 'utf8');
   const mainSource = fs.readFileSync(path.join(extractDir, 'dist/main.js'), 'utf8');
   const preloadSource = fs.readFileSync(path.join(extractDir, 'dist/preload.js'), 'utf8');
+  const ipcHandlersSource = fs.readFileSync(path.join(extractDir, 'dist/ipcHandlers.js'), 'utf8');
   requireText(languageServerSource, "TOKEN_MONITOR_API_PORT = 31000", 'dist/languageServer.js');
   requireText(languageServerSource, "TOKEN_MONITOR_CLOUD_PORT = 31001", 'dist/languageServer.js');
   requireText(languageServerSource, 'isTokenMonitorAvailable()', 'dist/languageServer.js');
@@ -90,12 +91,17 @@ try {
   requireText(mainSource, "ipcMain.on('token:report'", 'dist/main.js');
   requireText(preloadSource, "ipcRenderer.send('token:report'", 'dist/preload.js');
   rejectText(preloadSource, "origFetch('http://127.0.0.1:31000/report-token'", 'dist/preload.js');
+  requireText(ipcHandlersSource, 'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', 'dist/ipcHandlers.js');
+  rejectText(ipcHandlersSource, 'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary', 'dist/ipcHandlers.js');
+  rejectText(ipcHandlersSource, 'if (gemini5hVal === null) gemini5hVal = 100;', 'dist/ipcHandlers.js');
 
   const runtimeChecks = [
     'model API uses port 31000',
     'Cloud Code uses port 31001',
     'official endpoint fallback is present',
-    'Token reporting uses IPC'
+    'Token reporting uses IPC',
+    'account quota uses the daily Cloud Code endpoint',
+    'missing account quota is not reported as 100%'
   ];
 
   const report = {
