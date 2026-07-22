@@ -834,6 +834,7 @@ btnRestoreOriginal.addEventListener('click', async () => {
 // 4. 极简免 TUN 分流网络状态初始化与激活
 // ==========================================
 async function initNetworkStatus() {
+  if (!switchNetworkBypass) return;
   try {
     const res = await window.agyHubAPI.getNetworkConfig();
     if (res.success && res.data) {
@@ -845,46 +846,48 @@ async function initNetworkStatus() {
   }
 }
 
-btnSaveNetwork.addEventListener('click', async () => {
-  const active = switchNetworkBypass.checked;
-  const port = 7890; // 端口静默锁定为 7890 常用代理端口，摒弃用户手动设置
+if (btnSaveNetwork && switchNetworkBypass) {
+  btnSaveNetwork.addEventListener('click', async () => {
+    const active = switchNetworkBypass.checked;
+    const port = 7890; // 端口静默锁定为 7890 常用代理端口，摒弃用户手动设置
 
-  if (active) {
-    logToTerminal(`[Network] 正在检测本地代理服务 127.0.0.1:${port} 连通性...`);
-    try {
-      // 原生 TCP 套接字握手，不触碰命令执行
-      const testResult = await window.agyHubAPI.checkProxyPort(port);
-      if (!testResult.success) {
-        logToTerminal(`[警告] 代理测试失败: ${testResult.error}`, 'error');
-        alert(`⚠️ 本地代理端口 ${port} 连接测试未通畅！\n\n原因: ${testResult.error}\n\n建议:\n1. 确保 Clash / v2ray / NekoBox 已经在后台运行。\n2. 确认其本地 Socks / HTTP 代理端口确实为 ${7890}。`);
-        switchNetworkBypass.checked = false;
-        return;
-      }
+    if (active) {
+      logToTerminal(`[Network] 正在检测本地代理服务 127.0.0.1:${port} 连通性...`);
+      try {
+        // 原生 TCP 套接字握手，不触碰命令执行
+        const testResult = await window.agyHubAPI.checkProxyPort(port);
+        if (!testResult.success) {
+          logToTerminal(`[警告] 代理测试失败: ${testResult.error}`, 'error');
+          alert(`⚠️ 本地代理端口 ${port} 连接测试未通畅！\n\n原因: ${testResult.error}\n\n建议:\n1. 确保 Clash / v2ray / NekoBox 已经在后台运行。\n2. 确认其本地 Socks / HTTP 代理端口确实为 ${7890}。`);
+          switchNetworkBypass.checked = false;
+          return;
+        }
 
-      logToTerminal(`[Network] 本地代理服务连接测试成功，握手耗时正常。`, 'success');
-      
-      const saveRes = await window.agyHubAPI.saveNetworkConfig({ mode: 'bypass', active: true, port: port });
-      if (saveRes.success) {
-        logToTerminal(`[Network] 免 TUN 局部加速代理已成功保存并激活！配置存入: ${saveRes.path}`, 'success');
-        alert('💾 免 TUN 分流网络代理已成功保存并激活！');
+        logToTerminal(`[Network] 本地代理服务连接测试成功，握手耗时正常。`, 'success');
+        
+        const saveRes = await window.agyHubAPI.saveNetworkConfig({ mode: 'bypass', active: true, port: port });
+        if (saveRes.success) {
+          logToTerminal(`[Network] 免 TUN 局部加速代理已成功保存并激活！配置存入: ${saveRes.path}`, 'success');
+          alert('💾 免 TUN 分流网络代理已成功保存并激活！');
+        }
+      } catch (err) {
+        logToTerminal(err.message, 'error');
       }
-    } catch (err) {
-      logToTerminal(err.message, 'error');
-    }
-  } else {
-    // 用户选择关闭网络代理
-    logToTerminal('[Network] 正在禁用免 TUN 局部代理，流量将走系统直连。');
-    try {
-      const saveRes = await window.agyHubAPI.saveNetworkConfig({ mode: 'direct', active: false, port: port });
-      if (saveRes.success) {
-        logToTerminal(`[Network] 网络代理已关闭！已切回全局直连模式。`, 'success');
-        alert('💾 网络策略修改成功！已切回直连模式。');
+    } else {
+      // 用户选择关闭网络代理
+      logToTerminal('[Network] 正在禁用免 TUN 局部代理，流量将走系统直连。');
+      try {
+        const saveRes = await window.agyHubAPI.saveNetworkConfig({ mode: 'direct', active: false, port: port });
+        if (saveRes.success) {
+          logToTerminal(`[Network] 网络代理已关闭！已切回全局直连模式。`, 'success');
+          alert('💾 网络策略修改成功！已切回直连模式。');
+        }
+      } catch (err) {
+        logToTerminal(err.message, 'error');
       }
-    } catch (err) {
-      logToTerminal(err.message, 'error');
     }
-  }
-});
+  });
+}
 
 // ==========================================
 // 5. MCP 插件市场初始化与事件 (扩增至 8 大旗舰插件)
