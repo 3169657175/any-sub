@@ -145,7 +145,8 @@ function notifyFrontend(mainWindow, logEntry, stats) {
       source: logEntry.source,
       requestPath: logEntry.requestPath,
       contentType: logEntry.contentType,
-      usageProtocol: logEntry.usageProtocol
+      usageProtocol: logEntry.usageProtocol,
+      accountId: logEntry.accountId
     });
   } catch (e) {}
 }
@@ -522,6 +523,14 @@ function startProxy(mainWindow, port = 31000, upstream = DEFAULT_API_UPSTREAM) {
   }
 }
 
+function stopProxy() {
+  for (const server of proxyServers) {
+    try { server.close(); } catch (e) {}
+  }
+  proxyServers = [];
+  activeRoutes = new Map();
+}
+
 function getInitialStats() {
   try {
     const statsPath = path.join(app.getPath('userData'), 'token_stats.json');
@@ -554,4 +563,4 @@ function getProxyStatus() {
   };
 }
 
-module.exports = { startProxy, getInitialStats, getProxyStatus, recordTokenLog };
+module.exports = { startProxy, stopProxy, getInitialStats, getProxyStatus, recordTokenLog };

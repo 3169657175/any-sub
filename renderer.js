@@ -95,6 +95,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadAnnouncementHistory();
       } else if (targetId === 'tab-local-accounts') {
         loadLocalAccounts();
+      } else if (targetId === 'tab-codex-gateway') {
+        document.dispatchEvent(new CustomEvent('agy-codex-tab-opened'));
       }
     });
   });
@@ -773,8 +775,8 @@ async function doPathDetection() {
   try {
     appPaths = await window.agyHubAPI.detectPaths();
     if (appPaths.detected) {
-      pathStatusText.textContent = `🚀 已检测到 Antigravity 安装在：${appPaths.installDir}`;
-      pathStatusText.style.color = '#00ffcc';
+      pathStatusText.textContent = `已检测到 Antigravity 安装在：${appPaths.installDir}`;
+      pathStatusText.style.color = 'var(--accent-green)';
       inputInstallDir.value = appPaths.installDir;
       logToTerminal(`[Path] 自动检测安装目录成功，位置：${appPaths.asarPath}`, 'success');
 
@@ -786,8 +788,8 @@ async function doPathDetection() {
         logToTerminal(`[Version] 官方原版: v${verRes.originalVersion} | 管家补丁: v${verRes.patchVersion}`);
       }
     } else {
-      pathStatusText.textContent = '⚠️ 未找到默认安装路径，请手动选择或覆盖。';
-      pathStatusText.style.color = '#ff6600';
+      pathStatusText.textContent = '未找到默认安装路径，请手动选择或覆盖。';
+      pathStatusText.style.color = 'var(--accent-pink)';
       textOriginalVersion.textContent = 'unknown';
       textPatchVersion.textContent = 'unknown';
       logToTerminal('[Path] 未在默认位置检测到客户端，请手动配置。', 'error');
@@ -2048,11 +2050,11 @@ const terminalBar = document.getElementById('terminal-bar');
 if (btnToggleTerminal && terminalBar) {
   // 确保初始加载时绝对收起
   terminalBar.classList.remove('expanded');
-  btnToggleTerminal.textContent = '显示终端';
+  btnToggleTerminal.textContent = '显示日志';
 
   btnToggleTerminal.addEventListener('click', () => {
     const isExpanded = terminalBar.classList.toggle('expanded');
-    btnToggleTerminal.textContent = isExpanded ? '隐藏终端' : '显示终端';
+    btnToggleTerminal.textContent = isExpanded ? '隐藏日志' : '显示日志';
     
     // 同步给父容器 main-wrapper 切换高度避让 class
     const mainWrapper = document.querySelector('.main-wrapper');
@@ -3419,6 +3421,9 @@ async function loadAnnouncementSystemDesktop() {
         </div>
         <div class="modal-body" id="announcement-modal-body" style="font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.85); white-space: pre-wrap;">
         </div>
+        <div class="announcement-modal-footer" id="announcement-modal-footer" hidden>
+          <button class="btn btn-secondary" id="btn-expand-all-announcements" type="button">展开全部</button>
+        </div>
       </div>
     </div>
   `;
@@ -3430,7 +3435,7 @@ async function loadAnnouncementSystemDesktop() {
   const barHTML = `
     <div class="global-announcement-bar-desktop" id="global-announcement-bar-desktop" style="display: none;">
       <div class="announcement-bar-content-desktop">
-        <span class="announcement-bell">📢</span>
+        <span class="announcement-bell"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg></span>
         <span class="announcement-text-desktop" id="text-announcement-bar-content-desktop">最新公告加载中...</span>
         <button class="announcement-view-link-desktop" id="btn-reopen-announcement-desktop">点击查看详情 &rarr;</button>
       </div>
@@ -3447,64 +3452,112 @@ async function loadAnnouncementSystemDesktop() {
 
   const annModal = document.getElementById('announcement-modal');
   const annModalBody = document.getElementById('announcement-modal-body');
+  const annModalFooter = document.getElementById('announcement-modal-footer');
+  const btnExpandAll = document.getElementById('btn-expand-all-announcements');
   const btnCloseAnnModal = document.getElementById('btn-close-announcement-modal');
   const annBar = document.getElementById('global-announcement-bar-desktop');
   const textAnnBarContent = document.getElementById('text-announcement-bar-content-desktop');
   const btnReopenAnn = document.getElementById('btn-reopen-announcement-desktop');
 
-  if (!annModal || !annModalBody || !annBar) return;
+  if (!annModal || !annModalBody || !annBar || !annModalFooter || !btnExpandAll) return;
 
   try {
-    const res = await fetch('https://nhw1029.pages.dev/api/announcement');
-    if (!res.ok) return;
+    const res = await fetch('https://nhw1029.pages.dev/api/announcement?all=true', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`请求失败 (${res.status})`);
 
-    const announcement = await res.json();
-    if (!announcement) return; // 云端无公告
+    const payload = await res.json();
+    const announcements = (Array.isArray(payload) ? payload : payload ? [payload] : [])
+      .filter(item => item && item.content)
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    if (!announcements.length) return;
 
-    // 渲染公告详情内容
-    let bodyHtml = `<div>${escapeHTML(announcement.content)}</div>`;
-    if (announcement.image_url && announcement.image_url.trim()) {
-      bodyHtml += `<img src="${announcement.image_url.trim()}" class="announcement-img-preview img-trigger-lightbox" alt="公告配图" style="cursor: zoom-in;">`;
-    }
-    annModalBody.innerHTML = bodyHtml;
+    const latestAnnouncement = announcements[0];
+    let expanded = false;
 
-    // 绑定公告内图片灯箱放大
-    const annImages = annModalBody.querySelectorAll('.img-trigger-lightbox');
-    const lightboxModal = document.getElementById('lightbox-modal');
-    const lightboxLargeImg = document.getElementById('lightbox-large-img');
-    annImages.forEach(img => {
-      img.addEventListener('click', () => {
-        if (lightboxModal && lightboxLargeImg) {
-          lightboxLargeImg.src = img.src;
-          lightboxModal.style.display = 'flex';
+    const openImage = (src) => {
+      const lightboxModal = document.getElementById('lightbox-modal');
+      const lightboxLargeImg = document.getElementById('lightbox-large-img');
+      if (lightboxModal && lightboxLargeImg) {
+        lightboxLargeImg.src = src;
+        lightboxModal.style.display = 'flex';
+      }
+    };
+
+    const renderAnnouncements = () => {
+      annModalBody.replaceChildren();
+      const visibleAnnouncements = expanded ? announcements : announcements.slice(0, 1);
+
+      visibleAnnouncements.forEach((announcement, index) => {
+        const article = document.createElement('article');
+        article.className = `announcement-modal-item${index === 0 ? ' latest' : ''}`;
+
+        const meta = document.createElement('div');
+        meta.className = 'announcement-modal-meta';
+        const label = document.createElement('strong');
+        label.textContent = index === 0 ? '最新公告' : '历史公告';
+        const time = document.createElement('time');
+        const date = new Date(announcement.created_at || 0);
+        time.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleString('zh-CN');
+        meta.append(label, time);
+
+        const content = document.createElement('p');
+        content.textContent = announcement.content;
+        article.append(meta, content);
+
+        const imageUrl = String(announcement.image_url || '').trim();
+        if (imageUrl) {
+          const image = document.createElement('img');
+          image.src = imageUrl;
+          image.className = 'announcement-img-preview';
+          image.alt = '公告配图';
+          image.loading = index === 0 ? 'eager' : 'lazy';
+          image.addEventListener('click', () => openImage(image.src));
+          article.appendChild(image);
         }
+
+        annModalBody.appendChild(article);
       });
-    });
+
+      annModalFooter.hidden = announcements.length <= 1;
+      btnExpandAll.textContent = expanded ? '收起历史公告' : `展开全部（${announcements.length}）`;
+    };
+
+    const openLatestAnnouncement = () => {
+      expanded = false;
+      renderAnnouncements();
+      annModal.style.display = 'flex';
+    };
+
+    renderAnnouncements();
 
     // 展现顶栏常驻条
-    textAnnBarContent.textContent = announcement.content;
+    textAnnBarContent.textContent = latestAnnouncement.content;
     annBar.style.display = 'block';
 
     // 判定强弹
     const lastReadId = localStorage.getItem('read_announcement_id_desktop');
-    if (!lastReadId || parseInt(lastReadId) < announcement.id) {
-      annModal.style.display = 'flex';
+    if (!lastReadId || parseInt(lastReadId) < latestAnnouncement.id) {
+      openLatestAnnouncement();
     }
 
     const closeAnn = () => {
       annModal.style.display = 'none';
-      localStorage.setItem('read_announcement_id_desktop', announcement.id.toString());
+      localStorage.setItem('read_announcement_id_desktop', latestAnnouncement.id.toString());
     };
 
-    if (btnCloseAnnModal) btnCloseAnnModal.addEventListener('click', closeAnn);
-    annModal.addEventListener('click', (e) => {
+    if (btnCloseAnnModal) btnCloseAnnModal.onclick = closeAnn;
+    annModal.onclick = (e) => {
       if (e.target === annModal) closeAnn();
-    });
+    };
+
+    btnExpandAll.onclick = () => {
+      expanded = !expanded;
+      renderAnnouncements();
+      annModalBody.scrollTop = 0;
+    };
 
     if (btnReopenAnn) {
-      btnReopenAnn.addEventListener('click', () => {
-        annModal.style.display = 'flex';
-      });
+      btnReopenAnn.onclick = openLatestAnnouncement;
     }
 
   } catch (e) {
@@ -3958,28 +4011,16 @@ async function initTokenMonitor() {
 
   if (btnTabAccounts && btnTabToken) {
     function switchLaTab(tab) {
-      if (tab === 'accounts') {
-        btnTabAccounts.classList.add('active');
-        btnTabAccounts.style.background = 'var(--bg-card)';
-        btnTabAccounts.style.color = 'var(--text-main)';
-        
-        btnTabToken.classList.remove('active');
-        btnTabToken.style.background = 'transparent';
-        btnTabToken.style.color = 'var(--text-dim)';
-        
-        panelAccounts.style.display = 'flex';
-        panelToken.style.display = 'none';
-      } else {
-        btnTabToken.classList.add('active');
-        btnTabToken.style.background = 'var(--bg-card)';
-        btnTabToken.style.color = 'var(--text-main)';
-        
-        btnTabAccounts.classList.remove('active');
-        btnTabAccounts.style.background = 'transparent';
-        btnTabAccounts.style.color = 'var(--text-dim)';
-        
-        panelToken.style.display = 'flex';
-        panelAccounts.style.display = 'none';
+      const entries = [
+        ['accounts', btnTabAccounts, panelAccounts],
+        ['token', btnTabToken, panelToken]
+      ];
+      for (const [name, button, panel] of entries) {
+        const active = name === tab;
+        button.classList.toggle('active', active);
+        button.style.background = active ? 'var(--bg-card)' : 'transparent';
+        button.style.color = active ? 'var(--text-main)' : 'var(--text-dim)';
+        if (panel) panel.style.display = active ? 'flex' : 'none';
       }
     }
     btnTabAccounts.addEventListener('click', () => switchLaTab('accounts'));
@@ -4276,28 +4317,723 @@ async function initTokenMonitor() {
   }
 }
 
+async function initCodexGateway() {
+  const overviewMount = document.getElementById('codex-overview-mount');
+  const gatewayPanel = document.getElementById('panel-la-codex');
+  if (overviewMount && gatewayPanel && gatewayPanel.parentElement !== overviewMount) {
+    gatewayPanel.style.display = 'flex';
+    overviewMount.appendChild(gatewayPanel);
+  }
+  const stateBox = document.getElementById('codex-gateway-state');
+  const stateTitle = document.getElementById('codex-gateway-state-title');
+  const stateDetail = document.getElementById('codex-gateway-state-detail');
+  const baseUrl = document.getElementById('codex-gateway-base-url');
+  const account = document.getElementById('codex-gateway-account');
+  const model = document.getElementById('codex-gateway-model');
+  const modelControl = document.getElementById('codex-gateway-model-control');
+  const port = document.getElementById('codex-gateway-port');
+  const apiKey = document.getElementById('codex-gateway-api-key');
+  const resultBox = document.getElementById('codex-gateway-result');
+  const accountStatus = document.getElementById('codex-gateway-account-status');
+  const accountName = document.getElementById('codex-gateway-account-name');
+  const quotaGrid = document.getElementById('codex-gateway-quota-grid');
+  const refreshQuotaButton = document.getElementById('btn-codex-gateway-refresh-quota');
+  if (!stateBox || !window.agyHubAPI.getCodexGatewayStatus) return;
+
+  const workspaceTabs = document.querySelectorAll('.codex-workspace-tab');
+  const overviewPage = document.getElementById('codex-page-overview');
+  const usagePage = document.getElementById('codex-page-usage');
+  const providerPage = document.getElementById('codex-page-provider');
+
+  function switchCodexPage(page) {
+    workspaceTabs.forEach(button => button.classList.toggle('active', button.dataset.codexPage === page));
+    overviewPage?.classList.toggle('active', page === 'overview');
+    usagePage?.classList.toggle('active', page === 'usage');
+    providerPage?.classList.toggle('active', page === 'provider');
+    if (page === 'usage') refreshCodexUsage();
+  }
+
+  workspaceTabs.forEach(button => {
+    button.addEventListener('click', () => switchCodexPage(button.dataset.codexPage));
+  });
+
+  function renderCodexUsage(stats) {
+    const logs = (Array.isArray(stats?.logs) ? stats.logs : [])
+      .filter(log => log && log.source === 'codex-gateway');
+    const totals = logs.reduce((sum, log) => ({
+      input: sum.input + (Number(log.input ?? log.promptTokens) || 0),
+      output: sum.output + (Number(log.output ?? log.completionTokens) || 0),
+      cached: sum.cached + (Number(log.cached ?? log.cachedTokens) || 0),
+      uncached: sum.uncached + Math.max(0,
+        (Number(log.input ?? log.promptTokens) || 0) - (Number(log.cached ?? log.cachedTokens) || 0))
+    }), { input: 0, output: 0, cached: 0, uncached: 0 });
+    const rate = totals.input > 0 ? totals.cached / totals.input * 100 : 0;
+    const inputMetric = document.getElementById('codex-stat-input');
+    inputMetric.textContent = totals.uncached.toLocaleString();
+    if (inputMetric.previousElementSibling) inputMetric.previousElementSibling.textContent = '未缓存输入';
+    if (inputMetric.nextElementSibling) inputMetric.nextElementSibling.textContent = `总上下文 ${totals.input.toLocaleString()}`;
+    document.getElementById('codex-stat-output').textContent = totals.output.toLocaleString();
+    document.getElementById('codex-stat-cached').textContent = totals.cached.toLocaleString();
+    document.getElementById('codex-stat-rate').textContent = `${rate.toFixed(1)}%`;
+    document.getElementById('codex-stat-requests').textContent = logs.length.toLocaleString();
+    const list = document.getElementById('codex-usage-log');
+    if (!list) return;
+    list.replaceChildren();
+    if (!logs.length) {
+      const empty = document.createElement('div');
+      empty.className = 'codex-usage-empty';
+      empty.textContent = '等待 Codex 通过 AGY Hub 发起请求';
+      list.appendChild(empty);
+      return;
+    }
+    for (const log of logs.slice(0, 100)) {
+      const row = document.createElement('div');
+      row.className = 'codex-usage-row';
+      const time = document.createElement('time');
+      time.textContent = new Date(log.time || log.timestamp).toLocaleTimeString();
+      const modelName = document.createElement('strong');
+      modelName.textContent = log.model || 'AGY Hub';
+      const inputValue = document.createElement('span');
+      const totalInput = Number(log.input ?? log.promptTokens) || 0;
+      const cachedInput = Number(log.cached ?? log.cachedTokens) || 0;
+      inputValue.textContent = `新增 ${Math.max(0, totalInput - cachedInput)} / 上下文 ${totalInput}`;
+      const outputValue = document.createElement('span');
+      outputValue.textContent = `输出 ${Number(log.output ?? log.completionTokens) || 0}`;
+      const cachedValue = document.createElement('span');
+      cachedValue.className = 'cached';
+      cachedValue.textContent = `缓存 ${Number(log.cached ?? log.cachedTokens) || 0}`;
+      row.append(time, modelName, inputValue, outputValue, cachedValue);
+      list.appendChild(row);
+    }
+  }
+
+  async function refreshCodexUsage() {
+    try {
+      renderCodexUsage(await window.agyHubAPI.getTokenStats());
+    } catch (_) {}
+  }
+
+  function showResult(message, type = '') {
+    resultBox.textContent = message;
+    resultBox.className = `codex-gateway-result${type ? ` ${type}` : ''}`;
+  }
+
+  function settings() {
+    return {
+      accountId: account.value,
+      model: model.value,
+      modelControl: modelControl?.value || 'gateway',
+      port: Number(port.value),
+      autoResolvedModel: model.dataset.autoResolvedModel || ''
+    };
+  }
+
+  function renderStatus(status) {
+    stateBox.classList.toggle('running', Boolean(status.running));
+    stateTitle.textContent = status.running ? 'Codex 本地服务已运行' : 'Codex 本地服务已停止';
+    stateDetail.textContent = status.running
+      ? `${status.host}:${status.port} · Responses API`
+      : `端口 ${status.port} 等待启动`;
+    baseUrl.textContent = status.baseUrl;
+    port.value = String(status.port);
+    apiKey.value = status.apiKey;
+    if (modelControl) modelControl.value = status.modelControl === 'client' ? 'client' : 'gateway';
+    const agyModels = Array.isArray(status.antigravityModels) && status.antigravityModels.length
+      ? status.antigravityModels
+      : [
+        'agy-auto',
+        'gemini-3.6-flash-high',
+        'gemini-3.6-flash-medium',
+        'gemini-3.6-flash-low',
+        'gemini-3.1-pro-high',
+        'gemini-3.1-pro-low',
+        'claude-sonnet-4-6',
+        'claude-opus-4-6-thinking',
+        'gpt-oss-120b-medium'
+      ];
+    const selected = agyModels.includes(status.model) ? status.model : (model.value || 'gemini-3.1-pro-high');
+    model.replaceChildren(...agyModels.map(id => {
+      const option = document.createElement('option');
+      option.value = id;
+      const displayNames = {
+        'agy-auto': 'AGY 自动路由（按额度）',
+        'gemini-3.6-flash-high': 'Gemini 3.6 Flash (High)',
+        'gemini-3.6-flash-medium': 'Gemini 3.6 Flash (Medium)',
+        'gemini-3.6-flash-low': 'Gemini 3.6 Flash (Low)',
+        'gemini-3.1-pro-high': 'Gemini 3.1 Pro (High)',
+        'gemini-3.1-pro-low': 'Gemini 3.1 Pro (Low)',
+        'claude-sonnet-4-6': 'Claude Sonnet 4.6 (Thinking)',
+        'claude-opus-4-6-thinking': 'Claude Opus 4.6 (Thinking)',
+        'gpt-oss-120b-medium': 'GPT-OSS 120B (Medium)'
+      };
+      option.textContent = displayNames[id] || id;
+      option.selected = id === selected;
+      return option;
+    }));
+    renderSelectedAccount();
+  }
+
+  function selectedAccountLabel() {
+    return account.options[account.selectedIndex]?.textContent || '未选择账号';
+  }
+
+  function renderSelectedAccount(extra = '') {
+    if (!accountName) return;
+    const label = selectedAccountLabel();
+    accountName.textContent = `${label}${extra ? `，${extra}` : ''}`;
+  }
+
+  function formatQuotaReset(value) {
+    if (!value) return '暂无重置时间';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '暂无重置时间';
+    return `重置 ${date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  function renderQuotaItem(key, value, reset) {
+    const item = quotaGrid?.querySelector(`[data-quota="${key}"]`);
+    if (!item) return;
+    const percent = Math.max(0, Math.min(100, Number.parseInt(value, 10) || 0));
+    item.querySelector('strong').textContent = `${percent}%`;
+    item.querySelector('i').style.width = `${percent}%`;
+    item.querySelector('small').textContent = formatQuotaReset(reset);
+    item.classList.toggle('warning', percent > 0 && percent <= 25);
+    item.classList.toggle('empty', percent === 0);
+  }
+
+  function renderQuotaError(message) {
+    for (const item of quotaGrid?.querySelectorAll('.codex-gateway-quota-item') || []) {
+      item.querySelector('strong').textContent = '--';
+      item.querySelector('i').style.width = '0%';
+      item.querySelector('small').textContent = message;
+      item.classList.remove('warning', 'empty');
+    }
+  }
+
+  let quotaRequestId = 0;
+  async function refreshSelectedQuota(options = {}) {
+    const selectedId = account.value;
+    if (!selectedId) {
+      renderQuotaError('没有可用账号');
+      return null;
+    }
+    const requestId = ++quotaRequestId;
+    quotaGrid?.classList.add('loading');
+    refreshQuotaButton.disabled = true;
+    if (options.showResult) showResult('正在查询所选账号实时额度...');
+    try {
+      const response = await window.agyHubAPI.fetchAccountQuota(selectedId);
+      if (requestId !== quotaRequestId) return null;
+      if (!response || response.success === false) throw new Error(response?.error || '额度查询失败');
+      const quota = response.quota || {};
+      renderQuotaItem('gemini5h', quota.gemini5h, quota.gemini5hReset);
+      renderQuotaItem('geminiWeekly', quota.geminiWeekly, quota.geminiWeeklyReset);
+      renderQuotaItem('claude5h', quota.claude5h, quota.claude5hReset);
+      renderQuotaItem('claudeWeekly', quota.claudeWeekly, quota.claudeWeeklyReset);
+      const geminiScore = Math.min(Number.parseInt(quota.gemini5h, 10) || 0, Number.parseInt(quota.geminiWeekly, 10) || 0);
+      const claudeScore = Math.min(Number.parseInt(quota.claude5h, 10) || 0, Number.parseInt(quota.claudeWeekly, 10) || 0);
+      const resolvedModel = claudeScore > geminiScore ? 'claude-sonnet-4-6' : 'gemini-3.1-pro-high';
+      model.dataset.autoResolvedModel = resolvedModel;
+      if (model.value === 'agy-auto') {
+        const configured = await window.agyHubAPI.startCodexGateway(settings());
+        if (configured && configured.status) renderStatus(configured.status);
+        renderSelectedAccount(`自动路由：${resolvedModel}`);
+      }
+      if (options.showResult) showResult(`已刷新 ${selectedAccountLabel()} 的实时额度`, 'success');
+      return response;
+    } catch (error) {
+      if (requestId !== quotaRequestId) return null;
+      renderQuotaError('读取失败');
+      if (options.showResult) showResult(`额度查询失败：${error.message}`, 'error');
+      return null;
+    } finally {
+      if (requestId === quotaRequestId) {
+        quotaGrid?.classList.remove('loading');
+        refreshQuotaButton.disabled = false;
+      }
+    }
+  }
+
+  async function loadAccounts(selectedId) {
+    const response = await window.agyHubAPI.listLocalAccounts();
+    if (!response || !response.success) throw new Error(response?.error || '本地账号读取失败');
+    const accounts = Array.isArray(response.accounts) ? response.accounts : [];
+    account.replaceChildren(...accounts.map(item => {
+      const option = document.createElement('option');
+      option.value = item.id;
+      option.textContent = `${item.email}${item.current ? '（当前）' : ''}`;
+      option.selected = item.id === selectedId || (!selectedId && item.current);
+      return option;
+    }));
+    if (!accounts.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = '没有可用账号';
+      account.appendChild(option);
+    }
+    renderSelectedAccount();
+  }
+
+  async function refresh() {
+    try {
+      const status = await window.agyHubAPI.getCodexGatewayStatus();
+      renderStatus(status);
+      await loadAccounts(status.accountId);
+      if (status.accountId && [...account.options].some(option => option.value === status.accountId)) {
+        account.value = status.accountId;
+      }
+      renderSelectedAccount();
+      await refreshSelectedQuota();
+    } catch (error) {
+      showResult(`状态读取失败：${error.message}`, 'error');
+    }
+  }
+
+  async function run(button, pendingText, action, successText) {
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = pendingText;
+    showResult(pendingText);
+    try {
+      const response = await action();
+      if (!response || response.success === false) throw new Error(response?.error || '操作失败');
+      if (response.status) renderStatus(response.status);
+      const message = typeof successText === 'function' ? successText(response) : successText;
+      showResult(message, 'success');
+      return response;
+    } catch (error) {
+      showResult(error.message, 'error');
+      return null;
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+
+  const startButton = document.getElementById('btn-codex-gateway-start');
+  const stopButton = document.getElementById('btn-codex-gateway-stop');
+  const testButton = document.getElementById('btn-codex-gateway-test');
+  const connectButton = document.getElementById('btn-codex-gateway-connect');
+  const restoreButton = document.getElementById('btn-codex-gateway-restore');
+  const providerNameInput = document.getElementById('codex-provider-name');
+  const providerProtocol = document.getElementById('codex-provider-protocol');
+  const providerUrl = document.getElementById('codex-provider-url');
+  const providerKey = document.getElementById('codex-provider-key');
+  const providerModelMode = document.getElementById('codex-provider-model-mode');
+  const providerNativeModel = document.getElementById('codex-provider-native-model');
+  const providerNativeModelField = document.getElementById('codex-provider-native-model-field');
+  const providerCustomModelField = document.getElementById('codex-provider-custom-model-field');
+  const providerCustomModels = document.getElementById('codex-provider-custom-models');
+  const providerResult = document.getElementById('codex-provider-result');
+  const testProviderButton = document.getElementById('btn-test-custom-provider');
+  const connectProviderButton = document.getElementById('btn-connect-custom-provider');
+  const addProviderButton = document.getElementById('btn-add-custom-provider');
+  const cancelProviderButton = document.getElementById('btn-cancel-custom-provider');
+  const providerManager = document.getElementById('codex-provider-profile-manager');
+  const providerEditor = document.getElementById('codex-provider-editor');
+  const providerEditorTitle = document.getElementById('codex-provider-editor-title');
+  const providerGrid = document.getElementById('codex-provider-profile-grid');
+  const providerEmpty = document.getElementById('codex-provider-profile-empty');
+  let testedProviderFingerprint = '';
+  let editingProviderId = '';
+  let activeProviderId = '';
+
+  function customProviderSettings() {
+    const modelMode = providerModelMode.value;
+    return {
+      id: editingProviderId,
+      providerName: providerNameInput.value.trim(),
+      protocol: providerProtocol.value,
+      baseUrl: providerUrl.value.trim(),
+      apiKey: providerKey.value.trim(),
+      modelMode,
+      model: modelMode === 'openai' ? providerNativeModel.value : '',
+      customModels: providerCustomModels.value.trim()
+    };
+  }
+
+  function providerFingerprint() {
+    return JSON.stringify(customProviderSettings());
+  }
+
+  function showProviderResult(message, type = '') {
+    providerResult.textContent = message;
+    providerResult.className = `provider-result${type ? ` ${type}` : ''}`;
+  }
+
+  function showProviderManager() {
+    providerManager.hidden = false;
+    providerEditor.hidden = true;
+  }
+
+  function showProviderEditor(profile = null) {
+    editingProviderId = profile?.id || '';
+    providerEditorTitle.textContent = profile ? `编辑 ${profile.providerName}` : '添加 OpenAI Responses Provider';
+    providerNameInput.value = profile?.providerName || 'Sub2API';
+    providerProtocol.value = profile?.protocol || 'responses';
+    providerUrl.value = profile?.baseUrl || 'http://localhost:8080/v1';
+    providerKey.value = profile?.apiKey || '';
+    providerModelMode.value = profile?.modelMode || 'openai';
+    providerNativeModel.value = profile?.model || 'gpt-5.6';
+    providerCustomModels.value = profile?.modelMode === 'custom' ? (profile.models || []).join('\n') : '';
+    providerKey.type = 'password';
+    testedProviderFingerprint = '';
+    syncProviderModelMode(false);
+    showProviderResult(profile ? '修改后请重新测试，再保存配置。' : '填写配置后先测试连接。');
+    providerManager.hidden = true;
+    providerEditor.hidden = false;
+  }
+
+  function profileCard(profile) {
+    const card = document.createElement('article');
+    card.className = `provider-profile-card${profile.id === activeProviderId ? ' active' : ''}`;
+    const modelCount = Array.isArray(profile.models) ? profile.models.length : 0;
+    const keyTail = profile.apiKey ? `Key ····${profile.apiKey.slice(-4)}` : '未保存 Key';
+    card.innerHTML = `
+      <div class="provider-profile-card-head">
+        <h4>${escapeHTML(profile.providerName || '未命名 Provider')}</h4>
+        <span class="provider-profile-card-badge">${profile.id === activeProviderId ? '当前接入' : 'Responses API'}</span>
+      </div>
+      <p class="provider-profile-url" title="${escapeHTML(profile.baseUrl || '')}">${escapeHTML(profile.baseUrl || '')}</p>
+      <div class="provider-profile-meta"><span>${escapeHTML(profile.model || '--')}</span><span>${modelCount} 个模型</span><span>${escapeHTML(keyTail)}</span></div>
+      <div class="provider-profile-actions">
+        <button class="btn btn-primary" type="button" data-action="connect">接入 Codex</button>
+        <button class="btn btn-secondary" type="button" data-action="test">测试</button>
+        <button class="btn btn-secondary" type="button" data-action="edit">编辑</button>
+        <button class="btn btn-secondary" type="button" data-action="delete">删除</button>
+      </div>`;
+    card.addEventListener('click', async event => {
+      const action = event.target.closest('button')?.dataset.action;
+      if (!action) return;
+      const settings = {
+        ...profile,
+        customModels: Array.isArray(profile.models) ? profile.models.join(',') : ''
+      };
+      if (action === 'edit') return showProviderEditor(profile);
+      if (action === 'delete') {
+        const response = await window.agyHubAPI.deleteCustomCodexProvider(profile.id);
+        if (!response || response.success === false) return showProviderResult(response?.error || '删除失败', 'error');
+        if (activeProviderId === profile.id) activeProviderId = '';
+        return loadProviderProfiles();
+      }
+      const button = event.target.closest('button');
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = action === 'test' ? '测试中...' : '写入中...';
+      try {
+        const response = action === 'test'
+          ? await window.agyHubAPI.testCustomCodexProvider(settings)
+          : await window.agyHubAPI.connectCustomCodexProvider(settings);
+        if (!response || response.success === false) throw new Error(response?.error || '操作失败');
+        if (action === 'connect') {
+          activeProviderId = profile.id;
+          await loadProviderProfiles();
+          const lifecycleMessage = response.codexApp?.success
+            ? response.codexApp.action === 'restarted'
+              ? 'Codex 已自动重启。'
+              : 'Codex 已自动启动。'
+            : `配置已保存，但自动启动 Codex 失败：${response.codexApp?.error || '未知错误'}`;
+          alert(`已将 ${profile.providerName} 通过小助手兼容网关写入 Codex。长对话压缩保护已开启；${lifecycleMessage}`);
+        } else {
+          alert(`连接测试成功：${response.model}`);
+        }
+      } catch (error) {
+        alert(`${action === 'test' ? '测试' : '接入'}失败：${error.message}`);
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    });
+    return card;
+  }
+
+  async function loadProviderProfiles() {
+    const response = await window.agyHubAPI.listCustomCodexProviders();
+    const profiles = response?.success && Array.isArray(response.profiles) ? response.profiles : [];
+    providerGrid.replaceChildren(...profiles.map(profileCard));
+    providerEmpty.hidden = profiles.length > 0;
+  }
+
+  function syncProviderModelMode(markDirty = true) {
+    const custom = providerModelMode.value === 'custom';
+    providerNativeModelField.hidden = custom;
+    providerCustomModelField.hidden = !custom;
+    if (markDirty) {
+      testedProviderFingerprint = '';
+      showProviderResult('配置已更改，请重新测试连接');
+    }
+  }
+
+  for (const input of [providerNameInput, providerProtocol, providerUrl, providerKey, providerNativeModel, providerCustomModels]) {
+    input?.addEventListener('input', () => { testedProviderFingerprint = ''; });
+    input?.addEventListener('change', () => { testedProviderFingerprint = ''; });
+  }
+  providerModelMode?.addEventListener('change', syncProviderModelMode);
+  document.getElementById('btn-toggle-provider-key')?.addEventListener('click', () => {
+    providerKey.type = providerKey.type === 'password' ? 'text' : 'password';
+  });
+  addProviderButton?.addEventListener('click', () => showProviderEditor());
+  cancelProviderButton?.addEventListener('click', showProviderManager);
+
+  testProviderButton?.addEventListener('click', async () => {
+    const original = testProviderButton.textContent;
+    testProviderButton.disabled = true;
+    testProviderButton.textContent = '正在测试...';
+    showProviderResult('正在请求 Provider 的 /responses 接口...');
+    try {
+      const fingerprint = providerFingerprint();
+      const response = await window.agyHubAPI.testCustomCodexProvider(customProviderSettings());
+      if (!response || response.success === false) throw new Error(response?.error || '连接测试失败');
+      testedProviderFingerprint = fingerprint;
+      showProviderResult(
+        `连接成功\nAPI：${response.baseUrl}/responses\n模型：${response.model}${response.matched ? '\n响应内容验证通过' : '\nProvider 已返回有效响应'}`,
+        'success'
+      );
+    } catch (error) {
+      testedProviderFingerprint = '';
+      showProviderResult(`连接失败：${error.message}`, 'error');
+    } finally {
+      testProviderButton.disabled = false;
+      testProviderButton.textContent = original;
+    }
+  });
+
+  connectProviderButton?.addEventListener('click', async () => {
+    if (!testedProviderFingerprint || testedProviderFingerprint !== providerFingerprint()) {
+      showProviderResult('请先使用当前配置完成连接测试，再保存。', 'error');
+      return;
+    }
+    const original = connectProviderButton.textContent;
+    connectProviderButton.disabled = true;
+    connectProviderButton.textContent = '正在保存...';
+    try {
+      const response = await window.agyHubAPI.saveCustomCodexProvider(customProviderSettings());
+      if (!response || response.success === false) throw new Error(response?.error || '保存失败');
+      editingProviderId = response.profile.id;
+      await loadProviderProfiles();
+      showProviderManager();
+    } catch (error) {
+      showProviderResult(`保存失败：${error.message}`, 'error');
+    } finally {
+      connectProviderButton.disabled = false;
+      connectProviderButton.textContent = original;
+    }
+  });
+
+  account.addEventListener('change', async () => {
+    const selectedId = account.value;
+    if (!selectedId) return;
+    account.disabled = true;
+    renderSelectedAccount('正在切换...');
+    try {
+      // configure is performed by start even while the local server is already listening.
+      // Requests opened after this resolves use the newly selected account; ongoing streams keep theirs.
+      const response = await window.agyHubAPI.startCodexGateway(settings());
+      if (!response || response.success === false) throw new Error(response?.error || '切换失败');
+      renderStatus(response.status);
+      renderSelectedAccount('已用于新的 Codex 请求');
+      await refreshSelectedQuota();
+      showResult(`已切换网关账号\n${selectedAccountLabel()}\n新的 Codex 请求会使用该账号；正在进行的对话不会被中断。`, 'success');
+    } catch (error) {
+      renderSelectedAccount('切换失败');
+      showResult(`账号切换失败：${error.message}`, 'error');
+    } finally {
+      account.disabled = false;
+    }
+  });
+
+  refreshQuotaButton.addEventListener('click', () => refreshSelectedQuota({ showResult: true }));
+
+  model.addEventListener('change', async () => {
+    if (modelControl) modelControl.value = 'gateway';
+    const response = await window.agyHubAPI.startCodexGateway(settings());
+    if (response && response.success !== false && response.status) {
+      renderStatus(response.status);
+      showResult(`已切换为小助手强制模型：${model.value}`, 'success');
+    }
+  });
+
+  modelControl?.addEventListener('change', async () => {
+    const response = await window.agyHubAPI.startCodexGateway(settings());
+    if (response && response.success !== false && response.status) {
+      renderStatus(response.status);
+      showResult(modelControl.value === 'client'
+        ? '已改为跟随 Codex 模型选择'
+        : `已强制使用小助手模型：${model.value}`, 'success');
+    }
+  });
+
+  startButton.addEventListener('click', () => run(
+    startButton, '正在启动...',
+    () => window.agyHubAPI.startCodexGateway(settings()),
+    response => `服务启动成功\nAPI：${response.status.baseUrl}\n模型：${response.status.model}`
+  ));
+  stopButton.addEventListener('click', () => run(
+    stopButton, '正在停止...',
+    () => window.agyHubAPI.stopCodexGateway(),
+    '服务已停止'
+  ));
+  testButton.addEventListener('click', () => run(
+    testButton, '正在请求模型...',
+    () => window.agyHubAPI.testCodexGateway(settings()),
+    response => `模型测试成功\n${response.message}\n账号：${account.options[account.selectedIndex]?.textContent || account.value}\n模型：${model.value}`
+  ));
+  connectButton.addEventListener('click', () => run(
+    connectButton, '正在备份并写入 Codex...',
+    () => window.agyHubAPI.connectCodexGateway(settings()),
+    response => {
+      const lifecycleMessage = response.codexApp?.success
+        ? response.codexApp.action === 'restarted'
+          ? 'Codex 已自动重启。'
+          : 'Codex 已自动启动。'
+        : `配置已写入，但自动启动 Codex 失败：${response.codexApp?.error || '未知错误'}`;
+      return `Codex 配置已写入\nProvider：AGY Hub（兼容本地历史）\nAPI：${response.status.baseUrl}\n备份：${response.backupDir}\n${lifecycleMessage}`;
+    }
+  ));
+  restoreButton.addEventListener('click', () => run(
+    restoreButton, '正在恢复...',
+    () => window.agyHubAPI.restoreCodexGateway(),
+    response => `Codex 原配置已恢复\n来源：${response.restoredFrom}\n重新启动 Codex 后生效。`
+  ));
+
+  document.getElementById('btn-copy-codex-url').addEventListener('click', async () => {
+    await navigator.clipboard.writeText(baseUrl.textContent);
+    showResult('API 地址已复制', 'success');
+  });
+  document.getElementById('btn-copy-codex-key').addEventListener('click', async () => {
+    await navigator.clipboard.writeText(apiKey.value);
+    showResult('API Key 已复制', 'success');
+  });
+  document.getElementById('btn-toggle-codex-key').addEventListener('click', () => {
+    apiKey.type = apiKey.type === 'password' ? 'text' : 'password';
+  });
+  document.addEventListener('agy-codex-tab-opened', refresh);
+  if (window.agyHubAPI.onTokenLogUpdate) {
+    window.agyHubAPI.onTokenLogUpdate(data => {
+      if (data.type === 'stats') renderCodexUsage(data.stats);
+    });
+  }
+  await refresh();
+  await loadProviderProfiles();
+  await refreshCodexUsage();
+  setInterval(() => refreshSelectedQuota(), 60 * 1000);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initTokenMonitor();
+  initCodexGateway();
 
   // ----------------------------------------
   // 自动更新逻辑 (electron-updater)
   // ----------------------------------------
   const btnCheckUpdate = document.getElementById('btn-check-update');
+  const updateModal = document.getElementById('update-modal');
+  const btnCloseUpdateModal = document.getElementById('btn-close-update-modal');
+  const btnUpdateCancel = document.getElementById('btn-update-cancel');
+  const btnUpdateAction = document.getElementById('btn-update-action');
+  const updateCurrentVersion = document.getElementById('update-current-version');
+  const updateLatestVersion = document.getElementById('update-latest-version');
+  const updateReleaseNotes = document.getElementById('update-release-notes');
+  const updateModalSummary = document.getElementById('update-modal-summary');
+  const updateModalStatus = document.getElementById('update-modal-status');
+  const updateProgressSection = document.getElementById('update-progress-section');
+  const updateProgressText = document.getElementById('update-progress-text');
+  const updateProgressPercent = document.getElementById('update-progress-percent');
+  const updateProgressBar = document.getElementById('update-progress-bar');
+  let updateAction = 'check';
+
+  function versionLabel(version) {
+    const clean = String(version || '--').replace(/^v/i, '');
+    return clean === '--' ? 'v--' : `v${clean}`;
+  }
+
+  function setUpdateModalVisible(visible) {
+    if (updateModal) updateModal.style.display = visible ? 'flex' : 'none';
+  }
+
+  function setUpdateAction(action, label, disabled = false) {
+    updateAction = action;
+    if (btnUpdateAction) {
+      btnUpdateAction.textContent = label;
+      btnUpdateAction.disabled = disabled;
+    }
+  }
+
+  function showAvailableUpdate(data) {
+    if (updateCurrentVersion) updateCurrentVersion.textContent = versionLabel(data.currentVersion);
+    if (updateLatestVersion) updateLatestVersion.textContent = versionLabel(data.version);
+    if (updateModalSummary) updateModalSummary.textContent = `检测到有更新，建议升级到 ${versionLabel(data.version)}`;
+    if (updateReleaseNotes) {
+      updateReleaseNotes.textContent = String(data.releaseNotes || '').trim() || '本次更新未提供详细说明。';
+    }
+    if (updateModalStatus) updateModalStatus.textContent = '';
+    if (updateProgressSection) updateProgressSection.hidden = true;
+    if (btnUpdateCancel) btnUpdateCancel.disabled = false;
+    if (btnCloseUpdateModal) btnCloseUpdateModal.disabled = false;
+    setUpdateAction('download', '更新');
+    setUpdateModalVisible(true);
+  }
+
+  async function runUpdateAction() {
+    if (updateAction === 'download') {
+      setUpdateAction('downloading', '正在下载...', true);
+      if (updateProgressSection) updateProgressSection.hidden = false;
+      if (updateModalStatus) updateModalStatus.textContent = '更新包将从 GitHub Release 下载。';
+      const result = await window.agyHubAPI.startDownloadUpdate();
+      if (!result || !result.success) {
+        setUpdateAction('download', '重新下载');
+        if (updateModalStatus) updateModalStatus.textContent = `下载失败：${result && result.error ? result.error : '未知错误'}`;
+      }
+      return;
+    }
+
+    if (updateAction === 'install') {
+      setUpdateAction('installing', '正在退出并安装...', true);
+      if (btnUpdateCancel) btnUpdateCancel.disabled = true;
+      if (btnCloseUpdateModal) btnCloseUpdateModal.disabled = true;
+      if (updateModalStatus) updateModalStatus.textContent = '正在关闭托盘与后台服务，请稍候...';
+      const result = await window.agyHubAPI.quitAndInstallUpdate();
+      if (result && result.success === false) {
+        if (btnUpdateCancel) btnUpdateCancel.disabled = false;
+        if (btnCloseUpdateModal) btnCloseUpdateModal.disabled = false;
+        setUpdateAction('install', '重试安装');
+        if (updateModalStatus) updateModalStatus.textContent = `启动安装失败：${result.error || '未知错误'}`;
+      }
+    }
+  }
+
+  function closeUpdateModal() {
+    if (updateAction === 'installing') return;
+    setUpdateModalVisible(false);
+  }
+
+  btnCloseUpdateModal?.addEventListener('click', closeUpdateModal);
+  btnUpdateCancel?.addEventListener('click', closeUpdateModal);
+  btnUpdateAction?.addEventListener('click', runUpdateAction);
+  updateModal?.addEventListener('click', event => {
+    if (event.target === updateModal) closeUpdateModal();
+  });
+
   if (btnCheckUpdate) {
     btnCheckUpdate.addEventListener('click', async () => {
+      if (updateAction === 'download' || updateAction === 'install') {
+        if (updateAction === 'download') setUpdateModalVisible(true);
+        else await runUpdateAction();
+        return;
+      }
       btnCheckUpdate.disabled = true;
-      btnCheckUpdate.textContent = '🔄 检查中...';
+      btnCheckUpdate.textContent = '检查中...';
       try {
         const res = await window.agyHubAPI.checkAppUpdate();
         if (!res.success) {
           alert('检查更新提示: ' + (res.error || '无法连接 GitHub Release'));
           btnCheckUpdate.disabled = false;
-          btnCheckUpdate.textContent = '🚀 检查更新';
+          btnCheckUpdate.textContent = '检查更新';
         }
       } catch (e) {
         alert('检查更新异常: ' + e.message);
         btnCheckUpdate.disabled = false;
-        btnCheckUpdate.textContent = '🚀 检查更新';
+        btnCheckUpdate.textContent = '检查更新';
       }
     });
   }
@@ -4309,35 +5045,48 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!btn) return;
       
       if (data.status === 'checking') {
-        btn.textContent = '🔄 检查中...';
+        btn.textContent = '检查中...';
         btn.disabled = true;
       } else if (data.status === 'available') {
-        btn.textContent = `📥 下载 v${data.version}`;
+        btn.textContent = `下载 v${data.version}`;
         btn.disabled = false;
-        btn.style.background = 'linear-gradient(135deg, #00b4db, #0083b0)';
-        btn.onclick = async () => {
-          btn.disabled = true;
-          btn.textContent = '⏳ 开始下载...';
-          await window.agyHubAPI.startDownloadUpdate();
-        };
+        updateAction = 'download';
+        showAvailableUpdate(data);
       } else if (data.status === 'not-available') {
-        btn.textContent = '✅ 已是最新版';
+        btn.textContent = '已是最新版';
         btn.disabled = false;
-        setTimeout(() => { btn.textContent = '🚀 检查更新'; }, 3000);
+        updateAction = 'check';
+        setTimeout(() => { btn.textContent = '检查更新'; }, 3000);
       } else if (data.status === 'downloading') {
-        btn.textContent = `⏬ 已下载 ${data.percent}%`;
+        btn.textContent = `已下载 ${data.percent}%`;
         btn.disabled = true;
+        updateAction = 'downloading';
+        if (updateProgressSection) updateProgressSection.hidden = false;
+        if (updateProgressText) updateProgressText.textContent = '正在下载更新包';
+        if (updateProgressPercent) updateProgressPercent.textContent = `${data.percent}%`;
+        if (updateProgressBar) updateProgressBar.style.width = `${Math.max(0, Math.min(100, Number(data.percent) || 0))}%`;
+        if (btnUpdateAction) {
+          btnUpdateAction.textContent = `正在下载 ${data.percent}%`;
+          btnUpdateAction.disabled = true;
+        }
       } else if (data.status === 'downloaded') {
-        btn.textContent = '✨ 立即重启覆盖安装';
+        btn.textContent = '立即重启安装';
         btn.disabled = false;
-        btn.style.background = 'linear-gradient(135deg, #11998e, #38ef7d)';
-        btn.onclick = () => {
-          window.agyHubAPI.quitAndInstallUpdate();
-        };
+        updateAction = 'install';
+        if (updateProgressSection) updateProgressSection.hidden = false;
+        if (updateProgressText) updateProgressText.textContent = '更新包已下载完成';
+        if (updateProgressPercent) updateProgressPercent.textContent = '100%';
+        if (updateProgressBar) updateProgressBar.style.width = '100%';
+        if (updateModalStatus) updateModalStatus.textContent = '点击“立即重启安装”后，管家会自动退出后台并完成更新。';
+        setUpdateAction('install', '立即重启安装');
+        setUpdateModalVisible(true);
       } else if (data.status === 'error') {
-        alert('更新提醒: ' + data.text);
-        btn.textContent = '🚀 检查更新';
+        if (updateModalStatus) updateModalStatus.textContent = data.text || '更新失败';
+        const modalOpen = Boolean(updateModal && updateModal.style.display !== 'none');
+        if (modalOpen) setUpdateAction('download', '重新下载');
+        btn.textContent = '检查更新';
         btn.disabled = false;
+        if (!modalOpen) updateAction = 'check';
       }
     });
   }

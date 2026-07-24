@@ -61,6 +61,19 @@ contextBridge.exposeInMainWorld('agyHubAPI', {
   startTokenProxy: (port, upstream) => ipcRenderer.invoke('start-token-proxy', port, upstream),
   onTokenLogUpdate: (callback) => ipcRenderer.on('token-log-update', (_event, data) => callback(data)),
 
+  // Codex 本地反代
+  getCodexGatewayStatus: () => ipcRenderer.invoke('codex-gateway-status'),
+  startCodexGateway: (settings) => ipcRenderer.invoke('codex-gateway-start', settings),
+  stopCodexGateway: () => ipcRenderer.invoke('codex-gateway-stop'),
+  testCodexGateway: (settings) => ipcRenderer.invoke('codex-gateway-test', settings),
+  connectCodexGateway: (settings) => ipcRenderer.invoke('codex-gateway-connect', settings),
+  testCustomCodexProvider: (settings) => ipcRenderer.invoke('codex-provider-test', settings),
+  connectCustomCodexProvider: (settings) => ipcRenderer.invoke('codex-provider-connect', settings),
+  listCustomCodexProviders: () => ipcRenderer.invoke('codex-provider-list'),
+  saveCustomCodexProvider: (settings) => ipcRenderer.invoke('codex-provider-save', settings),
+  deleteCustomCodexProvider: (id) => ipcRenderer.invoke('codex-provider-delete', id),
+  restoreCodexGateway: () => ipcRenderer.invoke('codex-gateway-restore'),
+
   // 自动更新 API
   checkAppUpdate: () => ipcRenderer.invoke('check-app-update'),
   startDownloadUpdate: () => ipcRenderer.invoke('start-download-update'),

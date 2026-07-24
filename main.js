@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, net, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const physicalFs = require('original-fs');
@@ -7,8 +7,13 @@ const crypto = require('crypto');
 const vm = require('vm');
 const asar = require('@electron/asar');
 const { exec, execFileSync, spawn } = require('child_process');
-const { startProxy, getInitialStats, getProxyStatus, recordTokenLog } = require('./proxy.js');
+const { startProxy, stopProxy, getInitialStats, getProxyStatus, recordTokenLog } = require('./proxy.js');
 const { BrainTokenMonitor } = require('./brainMonitor.js');
+const { CodexGateway, parseUpstreamEvents, collectParts } = require('./codexGateway.js');
+const { connectCodex, restoreCodex } = require('./codexConfig.js');
+const { codexAliasForModel } = require('./codexModels.js');
+const { readProfiles, saveProfile, deleteProfile } = require('./codexProviderProfiles.js');
+const { restartOrLaunchCodex } = require('./codexAppLifecycle.js');
 const AGY_THEME_CATALOG = [
   { id: 'doraemon', name: '哆啦A梦', file: '哆啦A梦.png', accent: '#3ba5fc', overlay: 0.18, position: 'center center', description: '蓝天白云与哆啦A梦，明快清爽。' },
   { id: 'shinchan', name: '蜡笔小新', file: '蜡笔小新.jpg', accent: '#fbd160', overlay: 0.16, position: 'center center', description: '樱花、蓝天、公园与小新小白，明快而不杂乱。' },
@@ -560,6 +565,20 @@ function normalizeAccountEmail(value) {
 let mainWindow;
 let tray = null;
 let brainTokenMonitor = null;
+let codexGateway = null;
+
+function decryptLocalAccountToken(detail) {
+  if (detail && detail.token_storage === 'electron-safe-storage-v1' && typeof detail.token_encrypted === 'string') {
+    const decrypted = safeStorage.decryptString(Buffer.from(detail.token_encrypted, 'base64'));
+    return JSON.parse(decrypted);
+  }
+  return detail && detail.token ? detail.token : null;
+}
+
+function requireCodexGateway() {
+  if (!codexGateway) throw new Error('Codex 本地接入服务尚未初始化');
+  return codexGateway;
+}
 
 function createWindow() {
   try {
@@ -617,6 +636,35 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     createWindow();
     startProxy(mainWindow, 31000, 'https://generativelanguage.googleapis.com');
+    codexGateway = new CodexGateway({
+      fetch: net.fetch,
+      accountRoot: path.join(os.homedir(), '.gemini', 'antigravity', 'tools'),
+      stateDir: app.getPath('userData'),
+      decryptToken: decryptLocalAccountToken,
+      clientId: getGoogleClientId(),
+      clientSecret: getGoogleClientSecret(),
+      onUsage: (metadata, model, accountId) => {
+        const input = Number(metadata && metadata.promptTokenCount) || 0;
+        const output = (Number(metadata && metadata.candidatesTokenCount) || 0)
+          + (Number(metadata && metadata.thoughtsTokenCount) || 0);
+        const cached = Number(metadata && metadata.cachedContentTokenCount) || 0;
+        recordTokenLog({
+          id: `codex-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+          time: new Date().toISOString(),
+          model: model || 'AGY Hub Codex',
+          accountId: accountId || '',
+          input, output, cached, cacheKnown: true,
+          duration: 0, estimated: false,
+          source: 'codex-gateway',
+          requestPath: '/v1/responses',
+          contentType: 'text/event-stream',
+          usageProtocol: 'cloud-code-usage-metadata'
+        });
+      }
+    });
+    codexGateway.start().catch(error => {
+      console.error('[Codex Gateway] Auto-start failed:', error);
+    });
     brainTokenMonitor = new BrainTokenMonitor({ onLog: recordTokenLog });
     brainTokenMonitor.start().catch(error => {
       console.error('[Token Monitor] Local transcript monitor failed:', error);
@@ -666,12 +714,241 @@ app.on('window-all-closed', function () {
 });
 
 app.on('before-quit', () => {
+  app.isQuiting = true;
+  stopProxy();
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
   if (brainTokenMonitor) brainTokenMonitor.stop();
+  if (codexGateway) codexGateway.stop().catch(() => {});
 });
 
 // ==========================================
 // IPC 通信事件监听
 // ==========================================
+
+ipcMain.handle('codex-gateway-status', async () => requireCodexGateway().status());
+
+ipcMain.handle('codex-gateway-start', async (_event, settings) => {
+  try {
+    return { success: true, status: await requireCodexGateway().start({ ...(settings || {}), mode: 'antigravity' }) };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('codex-gateway-stop', async () => {
+  try {
+    return { success: true, status: await requireCodexGateway().stop() };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('codex-gateway-test', async (_event, settings) => {
+  try {
+    const gateway = requireCodexGateway();
+    gateway.configure({ ...(settings || {}), mode: 'antigravity' });
+    const result = await gateway.callUpstream({
+      model: gateway.status().model,
+      input: 'Reply with exactly: AGY_OK',
+      max_output_tokens: 256,
+      stream: false
+    });
+    const visibleText = collectParts(parseUpstreamEvents(result.text))
+      .filter(part => part && typeof part.text === 'string' && !part.thought)
+      .map(part => part.text)
+      .join('');
+    const matched = /AGY_OK/i.test(visibleText);
+    return { success: true, matched, message: matched ? '模型已返回 AGY_OK' : '上游连接成功并返回了响应' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('codex-gateway-connect', async (_event, settings) => {
+  try {
+    const gateway = requireCodexGateway();
+    const status = await gateway.start({ ...(settings || {}), mode: 'antigravity' });
+    const state = connectCodex({
+      codexHome: path.join(os.homedir(), '.codex'),
+      stateDir: app.getPath('userData'),
+      baseUrl: status.baseUrl,
+      apiKey: status.apiKey,
+      model: codexAliasForModel(status.model),
+      models: status.models,
+      antigravity: true,
+      catalogKey: 'antigravity-local-gateway',
+      providerName: 'AGY Hub / Antigravity',
+      requiresOpenAIAuth: false,
+      contextWindow: 360000,
+      autoCompactPercent: 75
+    });
+    const codexApp = await restartOrLaunchCodex();
+    return { success: true, status, backupDir: state.backupDir, codexApp };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+const OPENAI_CODEX_MODELS = Object.freeze([
+  'gpt-5.6',
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.6-luna',
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+  'gpt-5.3-codex'
+]);
+
+function normalizeResponsesProviderSettings(settings = {}) {
+  const providerName = String(settings.providerName || 'Sub2API').trim().slice(0, 80) || 'Sub2API';
+  const protocol = String(settings.protocol || 'responses').trim();
+  if (protocol !== 'responses') throw new Error('当前 Codex 仅支持 OpenAI Responses 协议');
+
+  const rawBaseUrl = String(settings.baseUrl || '').trim();
+  if (!rawBaseUrl) throw new Error('请填写 Provider URL');
+  let parsed;
+  try { parsed = new URL(rawBaseUrl); } catch (_) { throw new Error('Provider URL 格式不正确'); }
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Provider URL 仅支持 HTTP 或 HTTPS');
+  parsed.pathname = parsed.pathname.replace(/\/+$/, '').replace(/\/responses$/i, '');
+  parsed.search = '';
+  parsed.hash = '';
+  const baseUrl = parsed.toString().replace(/\/$/, '');
+
+  const apiKey = String(settings.apiKey || '').trim();
+  if (!apiKey) throw new Error('请填写 API Key');
+  const mode = settings.modelMode === 'custom' ? 'custom' : 'openai';
+  const customModels = (Array.isArray(settings.models) ? settings.models : String(settings.customModels || '').split(/[\n,]/))
+    .map(value => String(value).trim())
+    .filter(Boolean);
+  const models = mode === 'custom' ? [...new Set(customModels)] : [...OPENAI_CODEX_MODELS];
+  if (!models.length) throw new Error('请至少填写一个自定义模型');
+  const requestedModel = String(settings.model || '').trim();
+  const model = requestedModel && models.includes(requestedModel) ? requestedModel : models[0];
+  return { providerName, protocol, baseUrl, apiKey, modelMode: mode, models, model };
+}
+
+ipcMain.handle('codex-provider-test', async (_event, settings) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const config = normalizeResponsesProviderSettings(settings);
+    const response = await net.fetch(`${config.baseUrl}/responses`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        input: 'Reply with exactly: AGY_PROVIDER_OK',
+        max_output_tokens: 64,
+        stream: false,
+        store: false
+      })
+    });
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(`Provider 返回 HTTP ${response.status}: ${body.slice(0, 400) || '无错误正文'}`);
+    }
+    return {
+      success: true,
+      status: response.status,
+      model: config.model,
+      baseUrl: config.baseUrl,
+      matched: /AGY_PROVIDER_OK/i.test(body)
+    };
+  } catch (error) {
+    return { success: false, error: error.name === 'AbortError' ? '连接测试超时（30 秒）' : error.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
+ipcMain.handle('codex-provider-connect', async (_event, settings) => {
+  try {
+    const config = normalizeResponsesProviderSettings(settings);
+    const gateway = requireCodexGateway();
+    const gatewayStatus = await gateway.start({
+      mode: 'custom',
+      customBaseUrl: config.baseUrl,
+      customApiKey: config.apiKey,
+      customProviderName: config.providerName,
+      customModels: config.models,
+      model: config.model,
+      modelControl: 'client'
+    });
+    const state = connectCodex({
+      codexHome: path.join(os.homedir(), '.codex'),
+      stateDir: app.getPath('userData'),
+      baseUrl: gatewayStatus.baseUrl,
+      apiKey: gatewayStatus.apiKey,
+      model: config.model,
+      models: config.models,
+      catalogKey: `custom-provider:${settings && settings.id ? settings.id : config.providerName}:${config.baseUrl}`,
+      protocol: config.protocol,
+      providerName: config.providerName,
+      requiresOpenAIAuth: false,
+      contextWindow: 400000,
+      autoCompactPercent: 80
+    });
+    const codexApp = await restartOrLaunchCodex();
+    return {
+      success: true,
+      providerName: config.providerName,
+      baseUrl: gatewayStatus.baseUrl,
+      upstreamBaseUrl: config.baseUrl,
+      model: config.model,
+      models: config.models,
+      compactionProtection: true,
+      backupDir: state.backupDir,
+      catalogPath: state.activeCatalogPath,
+      modelCount: state.modelCount,
+      codexApp
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('codex-provider-list', async () => {
+  try {
+    return { success: true, profiles: readProfiles(app.getPath('userData')) };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('codex-provider-save', async (_event, settings) => {
+  try {
+    const config = normalizeResponsesProviderSettings(settings);
+    const profile = saveProfile(app.getPath('userData'), { ...config, id: settings && settings.id });
+    return { success: true, profile };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('codex-provider-delete', async (_event, id) => {
+  try {
+    deleteProfile(app.getPath('userData'), String(id || ''));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('codex-gateway-restore', async () => {
+  try {
+    return { success: true, ...restoreCodex({ stateDir: app.getPath('userData') }) };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
 
 // 窗口控制
 ipcMain.on('window-minimize', () => {
@@ -2394,8 +2671,63 @@ ipcMain.handle('switch-local-account', async (event, accountId) => {
 // E. 自动检测更新与下载逻辑 (electron-updater)
 const { autoUpdater } = require('electron-updater');
 
+const UPDATE_REPOSITORY = Object.freeze({ owner: '3169657175', repo: 'any-sub' });
+let updateInstallInProgress = false;
+
 autoUpdater.autoDownload = false; // 用户手动确认后再下载
 autoUpdater.autoInstallOnAppQuit = true;
+
+function normalizeReleaseNotes(releaseNotes) {
+  if (typeof releaseNotes === 'string') return releaseNotes.trim();
+  if (Array.isArray(releaseNotes)) {
+    return releaseNotes
+      .map(item => typeof item === 'string' ? item : item && item.note)
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+  }
+  return '';
+}
+
+async function fetchGitHubReleaseDetails(version, fallbackNotes) {
+  const cleanVersion = String(version || '').replace(/^v/i, '');
+  const tag = `v${cleanVersion}`;
+  const fallbackUrl = `https://github.com/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}/releases/tag/${tag}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await net.fetch(
+      `https://api.github.com/repos/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}/releases/tags/${encodeURIComponent(tag)}`,
+      {
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'AGY-Hub-Updater'
+        }
+      }
+    );
+    if (!response.ok) throw new Error(`GitHub Release API returned ${response.status}`);
+    const release = await response.json();
+    return {
+      releaseNotes: normalizeReleaseNotes(release.body) || normalizeReleaseNotes(fallbackNotes),
+      releaseUrl: release.html_url || fallbackUrl
+    };
+  } catch (error) {
+    console.warn('[Updater] Failed to load GitHub release details:', error.message);
+    return {
+      releaseNotes: normalizeReleaseNotes(fallbackNotes),
+      releaseUrl: fallbackUrl
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function sendUpdaterMessage(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updater-message', payload);
+  }
+}
 
 autoUpdater.on('checking-for-update', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2403,15 +2735,16 @@ autoUpdater.on('checking-for-update', () => {
   }
 });
 
-autoUpdater.on('update-available', (info) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('updater-message', { 
-      status: 'available', 
-      version: info.version, 
-      releaseNotes: info.releaseNotes, 
-      text: `发现新版本 v${info.version}` 
-    });
-  }
+autoUpdater.on('update-available', async (info) => {
+  const release = await fetchGitHubReleaseDetails(info.version, info.releaseNotes);
+  sendUpdaterMessage({
+    status: 'available',
+    currentVersion: app.getVersion(),
+    version: info.version,
+    releaseNotes: release.releaseNotes,
+    releaseUrl: release.releaseUrl,
+    text: `发现新版本 v${info.version}`
+  });
 });
 
 autoUpdater.on('update-not-available', (info) => {
@@ -2462,12 +2795,25 @@ ipcMain.handle('start-download-update', async () => {
 });
 
 ipcMain.handle('quit-and-install-update', () => {
+  if (updateInstallInProgress) return { success: true, alreadyStarted: true };
+  updateInstallInProgress = true;
   app.isQuiting = true;
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.removeAllListeners('close');
-    mainWindow.destroy();
+  try {
+    if (tray) {
+      tray.destroy();
+      tray = null;
+    }
+    stopProxy();
+    if (brainTokenMonitor) brainTokenMonitor.stop();
+    if (codexGateway) codexGateway.stop().catch(() => {});
+
+    // Let electron-updater close all windows itself. The quit flag prevents
+    // the tray-style close handler from hiding the window during installation.
+    setImmediate(() => autoUpdater.quitAndInstall(false, true));
+    return { success: true };
+  } catch (error) {
+    updateInstallInProgress = false;
+    app.isQuiting = false;
+    return { success: false, error: error.message };
   }
-  setTimeout(() => {
-    autoUpdater.quitAndInstall(false, true);
-  }, 100);
 });

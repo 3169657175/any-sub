@@ -1,6 +1,6 @@
 {
   "name": "agy-hub",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "main": "main.js",
   "license": "MIT",
   "scripts": {
@@ -8,7 +8,9 @@
     "patch:baseline": "node patch-workbench/make-baseline.js",
     "patch:rebuild": "node patch-workbench/build-patch.js",
     "patch:verify": "node patch-workbench/verify-patch.js",
-    "test:token-usage": "node --test tokenUsage.test.js"
+    "test:token-usage": "node --test tokenUsage.test.js",
+    "test:codex-gateway": "node --test codexGateway.test.js",
+    "test:codex-lifecycle": "node --test codexAppLifecycle.test.js"
   },
   "build": {
     "appId": "com.agy.hub",
@@ -25,6 +27,7 @@
       "!dist-token-monitor{,/**}",
       "!backup_before_*{,/**}",
       "!**/*.backup_*",
+      "!**/*.test.js",
       "!assets/app.asar",
       "!assets/app.asar.unpacked{,/**}",
       "!assets/patch-manifest.json"
@@ -53,9 +56,11 @@
       ]
     },
     "nsis": {
-      "oneClick": true,
+      "artifactName": "agy-hub-setup-${version}.${ext}",
+      "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": false
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true
     }
   },
   "dependencies": {
